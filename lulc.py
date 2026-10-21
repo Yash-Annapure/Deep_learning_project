@@ -48,7 +48,7 @@ class LULCDataset(Dataset):
     def __init__(self, role, data_dir="data", year=2024, patch=256, stride=128, min_labelled=0.05):
         roles = {r["name"]: r["role"] for r in csv.DictReader(open(f"{data_dir}/sites.csv"))}
         self.patch = patch
-        self.radar, self.label, self.conf, self.filled, self.site = [], [], [], [], []
+        self.radar, self.label, self.conf, self.filled, self.site, self.month = [], [], [], [], [], []
         self.items = []  # (index of site-month, row, col)
         for site in sorted(s for s, r in roles.items() if r == role):
             yearly = np.load(f"{data_dir}/yearly/{site}_{year}.npz")
@@ -62,6 +62,7 @@ class LULCDataset(Dataset):
                 self.conf.append(np.where(own, d["conf"], yearly["conf"]).astype(np.float16))
                 self.filled.append(~own)
                 self.site.append(site)
+                self.month.append(int(f[-6:-4]))  # file names end in _YYYY-MM.npz
                 h, w = label.shape
                 for r in window_starts(h, patch, stride):
                     for c in window_starts(w, patch, stride):

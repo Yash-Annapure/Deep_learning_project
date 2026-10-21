@@ -12,6 +12,14 @@ Running list of points to use in the report. Add to it as we go.
 
 Draft sentence: "Unlike SSL4EO-S12, which discards locations without cloud-free optical coverage, we keep cloudy tropical sites, since the model is meant to work in exactly those regions."
 
+## Main variant comparison (learner's choice, 2026-10-21)
+
+Hypothesis from the learner: hybrid labels (monthly label where it exists, yearly label as a lower-weight fill) give a better model than monthly labels only.
+- Variant A: monthly labels only (filled pixels set to ignore). Variant B: hybrid labels. Everything else identical (same encoder from scratch, same split, same training setup).
+- Score both on the same test pixels, real monthly labels only, otherwise the hybrid model benefits from the yearly fill. Also break scores down by month, especially wet-season months (note: test labels are scarce there, so those scores rest on thin data).
+- The result may go either way; both outcomes are reportable.
+- Learner's prediction, written before running: monthly-only will score higher overall (hybrid may hide problems not yet visible); the biggest difference will be in harsh-weather months (monsoon, rain), where missing or misidentified data shows up. Claude's note: monthly-only gets few labels in those months, so a mixed result (hybrid better in the rainy season, monthly-only better elsewhere) is also plausible.
+
 ## Planned model variant for later (not iteration 1)
 
 Use extra data during training only, so the final model stays Sentinel-1-only (the brief requires Sentinel-1 as the only input). Options, in order of effort:

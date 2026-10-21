@@ -3,3 +3,5 @@ project_scope.pdf
 .venv/
 data/
 *.zip
+weights/
+__pycache__/
