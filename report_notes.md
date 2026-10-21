@@ -29,6 +29,15 @@ Motivation: the first hybrid model labels many smooth non-water surfaces (bare g
 - Prototype consequence: compute the 12 monthly images, then their median; any 12-month window contains each calendar month once, so it matches training.
 - Trade-off to mention: the yearly median is the same for all 12 months, so it may stabilise predictions (fewer fake seasonal changes) but could damp real month-to-month change.
 
+### Result of the time-context experiment (validation sites, 2 seeds each)
+
+| | mIoU | water IoU | water precision |
+|---|---|---|---|
+| baseline (hybrid), seeds 0 / 1 | 0.273 / 0.273 | 0.474 / 0.409 | 0.587 / 0.516 |
+| + yearly median context, seeds 0 / 1 | 0.300 / 0.289 | 0.464 / 0.405 | 0.661 / 0.511 |
+
+Verdict (learner's reading, matches the numbers): a small improvement in mIoU (about +0.02, higher on both seeds), nothing clear on water (difference about -0.007, smaller than the seed-to-seed spread of about 0.06). By the rule written beforehand the idea did not clearly help on its target. Caveat: on validation sites the baseline already has decent water IoU (~0.44), unlike the test sites (0.065), so validation could not test the false-water problem well. The failure shows on dry test regions (Sahel, northern Ghana, Nashik) that the validation sites do not represent; this is a finding about generalisation to unlike regions for the critical discussion.
+
 ## Planned model variant for later (not iteration 1)
 
 Use extra data during training only, so the final model stays Sentinel-1-only (the brief requires Sentinel-1 as the only input). Options, in order of effort:
