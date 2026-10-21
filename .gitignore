@@ -2,3 +2,4 @@ project_scope.pdf
 .vibe-wise
 .venv/
 data/
+*.zip
