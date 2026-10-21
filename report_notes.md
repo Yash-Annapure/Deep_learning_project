@@ -20,6 +20,15 @@ Hypothesis from the learner: hybrid labels (monthly label where it exists, yearl
 - The result may go either way; both outcomes are reportable.
 - Learner's prediction, written before running: monthly-only will score higher overall (hybrid may hide problems not yet visible); the biggest difference will be in harsh-weather months (monsoon, rain), where missing or misidentified data shows up. Claude's note: monthly-only gets few labels in those months, so a mixed result (hybrid better in the rainy season, monthly-only better elsewhere) is also plausible.
 
+## Second experiment: time context (variant C), rule written before running (2026-10-22)
+
+Motivation: the first hybrid model labels many smooth non-water surfaces (bare ground, dry fields, grass) as water (only 7% of predicted water was truly water on test; false water was clustered, darker than its surroundings). Learner's idea: give the model the year's context, because vegetation and soil change with the seasons while water stays dark.
+- Measurement behind it (training sites, VV): yearly median is -14.0 dB for water vs -7.6 to -11.4 dB for other classes; a single threshold on the yearly median catches 81% of water with 11% false alarms, a single month catches 59% with 18%. Water's month-to-month variability is actually higher (2.9 dB vs 1.3-2.0), so the useful signal is the typical level, not stability.
+- Variant C: hybrid labels plus 2 extra channels (yearly median VV, VH), 4 input channels. Same labels, model and settings otherwise.
+- Success rule, judged on VALIDATION sites (the test sites are only read once at the end; the first test results were seen once before any change): worked = water IoU up by at least ~0.05 points AND clearly more than the run-to-run spread, and mIoU not lower. Didn't help = gain within the run-to-run spread. Worse = water IoU or mIoU drops by more than the spread. Spread is measured by training each setup with two seeds.
+- Prototype consequence: compute the 12 monthly images, then their median; any 12-month window contains each calendar month once, so it matches training.
+- Trade-off to mention: the yearly median is the same for all 12 months, so it may stabilise predictions (fewer fake seasonal changes) but could damp real month-to-month change.
+
 ## Planned model variant for later (not iteration 1)
 
 Use extra data during training only, so the final model stays Sentinel-1-only (the brief requires Sentinel-1 as the only input). Options, in order of effort:

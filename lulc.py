@@ -43,15 +43,20 @@ class LULCDataset(Dataset):
 
     Label rule: the month's own label where it exists, otherwise the site's yearly label (filled = True).
     Confidence cutoffs and loss weights are not applied here; the training step does that.
+
+    context=True adds two channels to every window: the site's yearly median radar (VV, VH), the same for all
+    12 months. Water stays dark all year, while dry soil and grass brighten in some months.
     """
 
-    def __init__(self, role, data_dir="data", year=2024, patch=256, stride=128, min_labelled=0.05):
+    def __init__(self, role, data_dir="data", year=2024, patch=256, stride=128, min_labelled=0.05, context=False):
         roles = {r["name"]: r["role"] for r in csv.DictReader(open(f"{data_dir}/sites.csv"))}
         self.patch = patch
+        self.channels = 2 + 2 * context
         self.radar, self.label, self.conf, self.filled, self.site, self.month = [], [], [], [], [], []
         self.items = []  # (index of site-month, row, col)
         for site in sorted(s for s, r in roles.items() if r == role):
             yearly = np.load(f"{data_dir}/yearly/{site}_{year}.npz")
+            first = len(self.radar)  # this site's months are self.radar[first:] once the loop below is done
             for f in sorted(glob.glob(f"{data_dir}/{site}_{year}-*.npz")):
                 d = np.load(f)
                 own = d["label"] != IGNORE  # pixels where this month has its own label
@@ -68,6 +73,10 @@ class LULCDataset(Dataset):
                     for c in window_starts(w, patch, stride):
                         if (label[r:r + patch, c:c + patch] != IGNORE).mean() >= min_labelled:
                             self.items.append((k, r, c))
+            if context:  # median over the site's months; scaling is monotonic, so scale-then-median equals median-then-scale
+                med = np.median(np.stack(self.radar[first:]), axis=0).astype(np.float16)
+                for k in range(first, len(self.radar)):
+                    self.radar[k] = np.concatenate([self.radar[k], med])
 
     def __len__(self):
         return len(self.items)
@@ -92,6 +101,10 @@ if __name__ == "__main__":  # self-check: python lulc.py
               f"{np.mean([f.mean() for f in ds.filled]):.2f} of pixels filled from the yearly label")
     assert not (set(sets["train"].site) & set(sets["val"].site) | set(sets["train"].site) & set(sets["test"].site)
                 | set(sets["val"].site) & set(sets["test"].site)), "a site appears in two splits"
+    ctx = LULCDataset("val", context=True)  # context channels: 4 channels, in range, and identical for all months of a site
+    assert ctx.channels == 4 and ctx[0][0].shape == (4, 256, 256) and 0 <= ctx[0][0].min() and ctx[0][0].max() <= 1
+    first_month = next(i for i in range(1, len(ctx.site)) if ctx.site[i] == ctx.site[0])
+    assert np.array_equal(ctx.radar[0][2:], ctx.radar[first_month][2:]) and not np.array_equal(ctx.radar[0][:2], ctx.radar[first_month][:2])
     lab = np.concatenate([l.ravel() for l in sets["train"].label])
     shares = np.bincount(lab, minlength=256) / lab.size
     print("train class shares:", {c: round(float(shares[i]), 3) for i, c in enumerate(CLASSES)}, "ignore", round(float(shares[IGNORE]), 3))
