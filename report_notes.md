@@ -20,6 +20,12 @@ Use extra data during training only, so the final model stays Sentinel-1-only (t
 - Distillation from an optical teacher (more work).
 Cautions: Sentinel-2 is 10 m, not high definition; truly high-resolution imagery is commercial/limited. Ask the professor whether optical pre-training is allowed under "Sentinel-1 only". Fits the brief's "comparison of model variants".
 
+## Site coordinates
+
+- All 10 original site centres were cross-checked against OpenStreetMap's Nominatim geocoder (city-level results, 2026-10-21). Every site agrees within about 2 km, which is negligible for 10 km squares. Coordinates in the notebook were left unchanged so they match the data already downloaded.
+- Lesson for the report or README: a plain place-name search can return an administrative region (division, province) instead of the city (seen for Morogoro, Mymensingh, Battambang). Use a city filter (`featuretype=city`) and check the result type.
+- Rural sites were found by searching a 3x3 grid (about 28 km spacing) around geocoded anchor towns, then screening on the Dynamic World label (built share under 15%, at least 90% labelled).
+
 ## Label gaps in our data (observed 2024 export, 10 sites)
 
 - 75 of 120 site-months have at most 20% of label pixels missing. Gaps follow each site's rainy season; Kisumu is the only clean site. Radar is complete in all months.
