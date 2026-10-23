@@ -64,6 +64,25 @@ Setup: hybrid labels, 2 input channels, U-Net ResNet-34 from scratch, 15 epochs 
 
 Reading: the false-water failure on the dry test regions is largely fixed by adding dry-region training sites and more years (test water IoU about 4x). Caveats to state: one seed (old runs had a spread of about 0.06 on water IoU and 0.04 on test mIoU, but this gain is larger than any of that); the change bundles more sites, more years, more steps and fewer epochs, so it cannot say which part helped (planned ablation: the same 21 sites with YEARS=(2024,)); the test numbers are for reporting, the validation numbers also improved; rare classes (flooded vegetation, bare) and crops are still weak, consistent with the low agreement between Dynamic World and WorldCover for those classes.
 
+## Sites against years, label filter and radar filters (queue results, 2026-10-24)
+
+All runs: hybrid labels, 2 input channels, U-Net ResNet-34 from scratch, 15 epochs unless noted. Noise level of the 4-year setup from 2 seeds: test mIoU 0.335 / 0.335, validation mIoU 0.350 / 0.362, test water IoU 0.423 / 0.417.
+
+| run | val mIoU | test mIoU | test OA | test water IoU | test bare IoU | test crops IoU |
+|---|---|---|---|---|---|---|
+| old runs, 9 sites 2024 (range of 5) | 0.26 to 0.30 | 0.21 to 0.25 | 0.54 to 0.65 | 0.065 to 0.105 | 0.004 to 0.071 | 0.07 to 0.20 |
+| 21 sites, 2024 only, 2 seeds | 0.326 / 0.337 | 0.350 / 0.335 | 0.682 / 0.693 | 0.467 / 0.382 | 0.272 / 0.247 | 0.229 / 0.144 |
+| 21 sites, 4 years, 2 seeds | 0.350 / 0.362 | 0.335 / 0.335 | 0.688 / 0.690 | 0.423 / 0.417 | 0.073 / 0.110 | 0.163 / 0.140 |
+| + WorldCover agreement filter (AGREE) | 0.342 | 0.362 | 0.696 | 0.516 | 0.212 | 0.174 |
+| + sharpen filter | 0.337 | 0.291 | 0.661 | 0.124 | 0.109 | 0.169 |
+| + smooth filter | 0.362 | 0.293 | 0.676 | 0.204 | 0.098 | 0.152 |
+
+- Sites, not years: 21 sites with 2024 only, at about the same number of training steps as the old runs, already matches the 4-year runs. Targeted diversity of places (dry regions) fixed the false water; repeating the same places in other years added little on the main scores. (Pending: 60-epoch 2024-only runs, which match the 4-year run's step count.)
+- Agreement filter (keep a filled yearly label only where WorldCover agrees): test mIoU +0.03 and test water IoU +0.10, test bare +0.12, but crops and low vegetation barely moved, so it did not fix the crops / low-vegetation confusion; validation mIoU did not improve (0.342 against 0.350 / 0.362). Single seed; mixed evidence.
+- Radar filters: neither sharpening nor smoothing helped. Validation was unchanged, but on the dry test sites both hurt (test mIoU -0.04, water IoU 0.42 to 0.12 and 0.20). Raw radar is best here. Single seed each, but the effect is much larger than the seed noise.
+- Methodological finding: the validation sites do not include dry regions, so they cannot see effects that show only on the dry test sites (the filters, the agreement filter). Plan: add dry-region validation sites.
+- Target remark: scoring is against Dynamic World, which agrees with WorldCover on only about 60% of pixels, so pixel accuracy near 95% is not a meaningful goal; report per-class IoU and compare with a baseline and with the label agreement.
+
 ## Planned model variant for later (not iteration 1)
 
 Use extra data during training only, so the final model stays Sentinel-1-only (the brief requires Sentinel-1 as the only input). Options, in order of effort:
