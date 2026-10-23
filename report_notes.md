@@ -38,6 +38,12 @@ Motivation: the first hybrid model labels many smooth non-water surfaces (bare g
 
 Verdict (learner's reading, matches the numbers): a small improvement in mIoU (about +0.02, higher on both seeds), nothing clear on water (difference about -0.007, smaller than the seed-to-seed spread of about 0.06). By the rule written beforehand the idea did not clearly help on its target. Caveat: on validation sites the baseline already has decent water IoU (~0.44), unlike the test sites (0.065), so validation could not test the false-water problem well. The failure shows on dry test regions (Sahel, northern Ghana, Nashik) that the validation sites do not represent; this is a finding about generalisation to unlike regions for the critical discussion.
 
+## Planned next changes (decided 2026-10-22)
+
+Professor's feedback: data quality and quantity first; look at newer architectures; sharpening/scaling the inputs; watch imbalance and coverage; synthetic data for under-covered cases.
+Order agreed: (1) expand real data: dry-region sites from other regions than the test sites (Dodoma, Kitui, Solapur, Pakokku, Khon Kaen, Adama, town plus rural square each) and years 2022, 2023, 2025 for training sites (2026 later, incomplete year); (2) label-quality filter using ESA WorldCover agreement (2021 only, partly S1-based, so not the independent case-study map); (3) after the data results: label-safe synthetic variation (random dB brightness jitter, re-sampled speckle noise, oversampling of dry-site and false-water patches); (4) architecture comparison (U-Net++, Segformer, FPN are one-line swaps in segmentation_models_pytorch) and a spatial speckle filter test.
+Why not generative synthetic radar: the failure is false water on dry non-water ground, so the missing examples are dry smooth non-water surfaces; a generator would need real dry-region data to learn from and may add artefacts. Mention as future work.
+
 ## Planned model variant for later (not iteration 1)
 
 Use extra data during training only, so the final model stays Sentinel-1-only (the brief requires Sentinel-1 as the only input). Options, in order of effort:

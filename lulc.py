@@ -5,6 +5,7 @@ and a flag saying whether the label came from the yearly map (filled) instead of
 """
 import csv
 import glob
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import torch
@@ -38,45 +39,83 @@ def window_starts(size, patch, stride):
     return starts
 
 
+def _read(f):
+    """Reads one monthly file. Decompressing releases Python's lock, so several files can be read at once in threads."""
+    with np.load(f) as d:
+        return d["radar"], d["label"], d["conf"]
+
+
 class LULCDataset(Dataset):
     """role is 'train', 'val' or 'test', taken from data/sites.csv, so a site is only ever in one split.
 
     Label rule: the month's own label where it exists, otherwise the site's yearly label (filled = True).
     Confidence cutoffs and loss weights are not applied here; the training step does that.
 
-    context=True adds two channels to every window: the site's yearly median radar (VV, VH), the same for all
+    years=None uses every year that has a yearly label file for the site (training sites can have several,
+    test and validation sites only 2024). Pass for example years=(2024,) to reproduce a single-year dataset.
+
+    agree=True is the label-quality filter: the yearly label (used only where a month has no label of its own) is kept
+    only where it agrees with ESA WorldCover (data/worldcover/<site>.npz, same classes after remapping). Everywhere
+    else it becomes ignore. Monthly labels are not touched, so real changes are not filtered out.
+
+    context=True adds two channels to every window: the site-year's median radar (VV, VH), the same for all
     12 months. Water stays dark all year, while dry soil and grass brighten in some months.
+
+    quantize=True stores radar and confidence as 8-bit numbers (0 to 255 instead of 0 to 1), half the memory of the
+    default 16-bit. The step is 1/255 of the range (about 0.12 dB for VV), far below the speckle noise. Windows are
+    converted back to 0..1 floats when they are read, so users of the dataset see the same thing either way.
     """
 
-    def __init__(self, role, data_dir="data", year=2024, patch=256, stride=128, min_labelled=0.05, context=False):
+    def __init__(self, role, data_dir="data", years=None, patch=256, stride=128, min_labelled=0.05, context=False,
+                 agree=False, quantize=False, workers=8):
         roles = {r["name"]: r["role"] for r in csv.DictReader(open(f"{data_dir}/sites.csv"))}
         self.patch = patch
         self.channels = 2 + 2 * context
-        self.radar, self.label, self.conf, self.filled, self.site, self.month = [], [], [], [], [], []
+        self.quantize = quantize
+        store = (lambda a: np.round(a * 255).astype(np.uint8)) if quantize else (lambda a: a.astype(np.float16))
+        self.radar, self.label, self.conf, self.filled, self.site, self.month, self.year = [], [], [], [], [], [], []
         self.items = []  # (index of site-month, row, col)
         for site in sorted(s for s, r in roles.items() if r == role):
-            yearly = np.load(f"{data_dir}/yearly/{site}_{year}.npz")
-            first = len(self.radar)  # this site's months are self.radar[first:] once the loop below is done
-            for f in sorted(glob.glob(f"{data_dir}/{site}_{year}-*.npz")):
-                d = np.load(f)
-                own = d["label"] != IGNORE  # pixels where this month has its own label
-                label = REMAP[np.where(own, d["label"], yearly["label"])]
-                k = len(self.radar)
-                self.radar.append(scale_radar(d["radar"]).astype(np.float16))  # float16 halves memory
-                self.label.append(label)
-                self.conf.append(np.where(own, d["conf"], yearly["conf"]).astype(np.float16))
-                self.filled.append(~own)
-                self.site.append(site)
-                self.month.append(int(f[-6:-4]))  # file names end in _YYYY-MM.npz
-                h, w = label.shape
-                for r in window_starts(h, patch, stride):
-                    for c in window_starts(w, patch, stride):
-                        if (label[r:r + patch, c:c + patch] != IGNORE).mean() >= min_labelled:
-                            self.items.append((k, r, c))
-            if context:  # median over the site's months; scaling is monotonic, so scale-then-median equals median-then-scale
-                med = np.median(np.stack(self.radar[first:]), axis=0).astype(np.float16)
-                for k in range(first, len(self.radar)):
-                    self.radar[k] = np.concatenate([self.radar[k], med])
+            # the digit pattern keeps "dodoma" from also picking up the files of "dodoma_rural"
+            found = sorted(int(f[-8:-4]) for f in glob.glob(f"{data_dir}/yearly/{site}_[0-9][0-9][0-9][0-9].npz"))
+            if agree:
+                wc = REMAP[np.load(f"{data_dir}/worldcover/{site}.npz")["label"]]  # WorldCover in our classes
+            for year in found if years is None else [y for y in found if y in years]:
+                yearly = np.load(f"{data_dir}/yearly/{site}_{year}.npz")
+                fill = yearly["label"]  # the yearly label that stands in where a month has no label of its own
+                if agree:
+                    fill = np.where(REMAP[fill] == wc, fill, IGNORE)  # keep it only where both sources say the same class
+                first = len(self.radar)  # this site-year's months are self.radar[first:] once the loop below is done
+                def prepare(f, fill=fill, yearly=yearly):
+                    """Everything for one month, in a worker thread: read it, rescale the radar, build the label and
+                    list the windows worth keeping. Numpy releases Python's lock on big arrays, so threads overlap."""
+                    radar_raw, label_raw, conf_raw = _read(f)
+                    own = label_raw != IGNORE  # pixels where this month has its own label
+                    label = REMAP[np.where(own, label_raw, fill)]
+                    h, w = label.shape
+                    keep = [(r, c) for r in window_starts(h, patch, stride) for c in window_starts(w, patch, stride)
+                            if (label[r:r + patch, c:c + patch] != IGNORE).mean() >= min_labelled]
+                    return (store(scale_radar(radar_raw)), label, store(np.where(own, conf_raw, yearly["conf"])),
+                            ~own, keep)
+
+                files = sorted(glob.glob(f"{data_dir}/{site}_{year}-*.npz"))
+                with ThreadPoolExecutor(max_workers=workers) as pool:  # one site-year at a time keeps memory small
+                    months = list(pool.map(prepare, files))
+                for f, (radar, label, conf, filled, keep) in zip(files, months):
+                    k = len(self.radar)
+                    self.radar.append(radar)
+                    self.label.append(label)
+                    self.conf.append(conf)
+                    self.filled.append(filled)
+                    self.site.append(site)
+                    self.month.append(int(f[-6:-4]))  # file names end in _YYYY-MM.npz
+                    self.year.append(year)
+                    self.items.extend((k, r, c) for r, c in keep)
+                if context:  # median over the site-year's months; scaling is monotonic, so scale-then-median equals median-then-scale
+                    med = np.median(np.stack(self.radar[first:]), axis=0)
+                    med = np.round(med).astype(np.uint8) if quantize else med.astype(np.float16)
+                    for k in range(first, len(self.radar)):
+                        self.radar[k] = np.concatenate([self.radar[k], med])
 
     def __len__(self):
         return len(self.items)
@@ -84,14 +123,15 @@ class LULCDataset(Dataset):
     def __getitem__(self, i):
         k, r, c = self.items[i]
         win = (slice(r, r + self.patch), slice(c, c + self.patch))
-        x = torch.from_numpy(self.radar[k][:, win[0], win[1]].astype(np.float32))
+        div = 255 if self.quantize else 1  # 8-bit storage is read back as 0..1
+        x = torch.from_numpy(self.radar[k][:, win[0], win[1]].astype(np.float32) / div)
         y = torch.from_numpy(self.label[k][win].astype(np.int64))  # 255 = ignore, as CrossEntropyLoss expects
-        conf = torch.from_numpy(self.conf[k][win].astype(np.float32))
+        conf = torch.from_numpy(self.conf[k][win].astype(np.float32) / div)
         return x, y, conf, torch.from_numpy(self.filled[k][win])
 
 
 if __name__ == "__main__":  # self-check: python lulc.py
-    sets = {role: LULCDataset(role) for role in ("train", "val", "test")}
+    sets = {role: LULCDataset(role, years=(2024,)) for role in ("train", "val", "test")}  # one year keeps the check light
     for role, ds in sets.items():
         x, y, conf, filled = ds[0]
         assert x.shape == (2, 256, 256) and y.shape == (256, 256) and conf.shape == filled.shape == y.shape
@@ -101,6 +141,10 @@ if __name__ == "__main__":  # self-check: python lulc.py
               f"{np.mean([f.mean() for f in ds.filled]):.2f} of pixels filled from the yearly label")
     assert not (set(sets["train"].site) & set(sets["val"].site) | set(sets["train"].site) & set(sets["test"].site)
                 | set(sets["val"].site) & set(sets["test"].site)), "a site appears in two splits"
+    q = LULCDataset("val", years=(2024,), quantize=True)  # 8-bit storage reads back as the same numbers, to within one step
+    f16 = LULCDataset("val", years=(2024,))
+    assert q.radar[0].dtype == np.uint8 and len(q) == len(f16)
+    assert abs(q[0][0] - f16[0][0]).max() <= 1 / 255 and abs(q[0][2] - f16[0][2]).max() <= 1 / 255
     ctx = LULCDataset("val", context=True)  # context channels: 4 channels, in range, and identical for all months of a site
     assert ctx.channels == 4 and ctx[0][0].shape == (4, 256, 256) and 0 <= ctx[0][0].min() and ctx[0][0].max() <= 1
     first_month = next(i for i in range(1, len(ctx.site)) if ctx.site[i] == ctx.site[0])

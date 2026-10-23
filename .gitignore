@@ -5,3 +5,5 @@ data/
 *.zip
 weights/
 __pycache__/
+PROJECT_SUMMARY.md
+upload
