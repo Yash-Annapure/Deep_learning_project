@@ -31,6 +31,31 @@ def scale_radar(radar):
     return out
 
 
+def _blur(x, sigma):
+    """Gaussian blur of each band of x, shape (bands, H, W), done as two 1-D passes."""
+    r = max(1, int(3 * sigma))
+    k = torch.exp(-torch.arange(-r, r + 1, dtype=torch.float32) ** 2 / (2 * sigma ** 2))
+    k = (k / k.sum()).view(1, 1, 1, -1)
+    t = torch.from_numpy(np.ascontiguousarray(x, dtype=np.float32))[:, None]            # (bands, 1, H, W)
+    t = torch.nn.functional.conv2d(torch.nn.functional.pad(t, (r, r, 0, 0), mode="reflect"), k)
+    t = torch.nn.functional.conv2d(torch.nn.functional.pad(t, (0, 0, r, r), mode="reflect"), k.transpose(2, 3))
+    return t[:, 0].numpy()
+
+
+def filter_radar(radar, kind):
+    """Optional spatial filter on the dB values, applied before scaling. The prototype must use the same one.
+    None: nothing. 'smooth': a light Gaussian blur, a simple speckle filter (less grain, softer edges).
+    'sharpen': an unsharp mask, the original plus its own detail (sharper edges, but the speckle grain is boosted too)."""
+    if kind is None:
+        return radar
+    blur = _blur(radar, 1.0)
+    if kind == "smooth":
+        return blur
+    if kind == "sharpen":
+        return radar + (radar - blur)
+    raise ValueError(f"unknown filter {kind!r}")
+
+
 def window_starts(size, patch, stride):
     """Start positions of windows along one axis. A last window is added so the far edge is covered."""
     starts = list(range(0, size - patch + 1, stride))
@@ -61,13 +86,15 @@ class LULCDataset(Dataset):
     context=True adds two channels to every window: the site-year's median radar (VV, VH), the same for all
     12 months. Water stays dark all year, while dry soil and grass brighten in some months.
 
+    filter=None, 'smooth' or 'sharpen' applies filter_radar to the radar before it is scaled (see there).
+
     quantize=True stores radar and confidence as 8-bit numbers (0 to 255 instead of 0 to 1), half the memory of the
     default 16-bit. The step is 1/255 of the range (about 0.12 dB for VV), far below the speckle noise. Windows are
     converted back to 0..1 floats when they are read, so users of the dataset see the same thing either way.
     """
 
     def __init__(self, role, data_dir="data", years=None, patch=256, stride=128, min_labelled=0.05, context=False,
-                 agree=False, quantize=False, workers=8):
+                 agree=False, quantize=False, workers=8, filter=None):
         roles = {r["name"]: r["role"] for r in csv.DictReader(open(f"{data_dir}/sites.csv"))}
         self.patch = patch
         self.channels = 2 + 2 * context
@@ -95,7 +122,7 @@ class LULCDataset(Dataset):
                     h, w = label.shape
                     keep = [(r, c) for r in window_starts(h, patch, stride) for c in window_starts(w, patch, stride)
                             if (label[r:r + patch, c:c + patch] != IGNORE).mean() >= min_labelled]
-                    return (store(scale_radar(radar_raw)), label, store(np.where(own, conf_raw, yearly["conf"])),
+                    return (store(scale_radar(filter_radar(radar_raw, filter))), label, store(np.where(own, conf_raw, yearly["conf"])),
                             ~own, keep)
 
                 files = sorted(glob.glob(f"{data_dir}/{site}_{year}-*.npz"))
@@ -141,6 +168,13 @@ if __name__ == "__main__":  # self-check: python lulc.py
               f"{np.mean([f.mean() for f in ds.filled]):.2f} of pixels filled from the yearly label")
     assert not (set(sets["train"].site) & set(sets["val"].site) | set(sets["train"].site) & set(sets["test"].site)
                 | set(sets["val"].site) & set(sets["test"].site)), "a site appears in two splits"
+    probe = np.random.default_rng(0).normal(-10, 3, (2, 64, 64)).astype(np.float32)  # the filters: shape kept, grain reduced or boosted
+    assert filter_radar(probe, None) is probe
+    sm, sh = filter_radar(probe, "smooth"), filter_radar(probe, "sharpen")
+    assert sm.shape == sh.shape == probe.shape and np.isfinite(sm).all() and np.isfinite(sh).all()
+    assert sm.std() < probe.std() < sh.std(), (sm.std(), probe.std(), sh.std())
+    fs = LULCDataset("val", years=(2024,), filter="sharpen")  # and through the dataset
+    assert fs[0][0].shape == (2, 256, 256) and 0 <= fs[0][0].min() and fs[0][0].max() <= 1
     q = LULCDataset("val", years=(2024,), quantize=True)  # 8-bit storage reads back as the same numbers, to within one step
     f16 = LULCDataset("val", years=(2024,))
     assert q.radar[0].dtype == np.uint8 and len(q) == len(f16)

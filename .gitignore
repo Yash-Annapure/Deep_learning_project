@@ -6,4 +6,6 @@ data/
 weights/
 __pycache__/
 PROJECT_SUMMARY.md
-upload
+upload/
+runs/
+queue.log

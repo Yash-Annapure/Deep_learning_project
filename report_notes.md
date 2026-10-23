@@ -44,6 +44,26 @@ Professor's feedback: data quality and quantity first; look at newer architectur
 Order agreed: (1) expand real data: dry-region sites from other regions than the test sites (Dodoma, Kitui, Solapur, Pakokku, Khon Kaen, Adama, town plus rural square each) and years 2022, 2023, 2025 for training sites (2026 later, incomplete year); (2) label-quality filter using ESA WorldCover agreement (2021 only, partly S1-based, so not the independent case-study map); (3) after the data results: label-safe synthetic variation (random dB brightness jitter, re-sampled speckle noise, oversampling of dry-site and false-water patches); (4) architecture comparison (U-Net++, Segformer, FPN are one-line swaps in segmentation_models_pytorch) and a spatial speckle filter test.
 Why not generative synthetic radar: the failure is false water on dry non-water ground, so the missing examples are dry smooth non-water surfaces; a generator would need real dry-region data to learn from and may add artefacts. Mention as future work.
 
+## Result of the expanded dataset (2026-10-23): first run on 21 train sites x 4 years
+
+Setup: hybrid labels, 2 input channels, U-Net ResNet-34 from scratch, 15 epochs (about 49,000 training patches, about 45,000 steps; the old runs had about 5,300 patches and 30 epochs, about 10,000 steps), seed 0, one run. Validation and test sites unchanged (4 and 3 sites, 2024).
+
+| | old hybrid (9 sites, 2024), range of 5 old runs | **new hybrid (21 sites, 2022-2025)** |
+|---|---|---|
+| validation mIoU | 0.260 to 0.300 | **0.350** |
+| validation water IoU | 0.405 to 0.474 | **0.566** |
+| validation water precision | 0.511 to 0.661 | **0.910** |
+| test OA | 0.541 to 0.648 | **0.688** |
+| test mIoU | 0.211 to 0.253 | **0.335** |
+| test water IoU | 0.065 to 0.105 | **0.423** |
+| test flooded vegetation IoU | 0.009 to 0.035 | 0.102 |
+| test low vegetation IoU | 0.200 to 0.411 | 0.456 |
+| test built IoU | 0.765 to 0.814 | 0.813 |
+| test crops IoU | 0.065 to 0.204 | 0.163 (no gain) |
+| test bare IoU | 0.004 to 0.071 | 0.073 |
+
+Reading: the false-water failure on the dry test regions is largely fixed by adding dry-region training sites and more years (test water IoU about 4x). Caveats to state: one seed (old runs had a spread of about 0.06 on water IoU and 0.04 on test mIoU, but this gain is larger than any of that); the change bundles more sites, more years, more steps and fewer epochs, so it cannot say which part helped (planned ablation: the same 21 sites with YEARS=(2024,)); the test numbers are for reporting, the validation numbers also improved; rare classes (flooded vegetation, bare) and crops are still weak, consistent with the low agreement between Dynamic World and WorldCover for those classes.
+
 ## Planned model variant for later (not iteration 1)
 
 Use extra data during training only, so the final model stays Sentinel-1-only (the brief requires Sentinel-1 as the only input). Options, in order of effort:
