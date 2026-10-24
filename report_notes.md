@@ -133,3 +133,13 @@ Cautions: Sentinel-2 is 10 m, not high definition; truly high-resolution imagery
 ## Label gaps in our data (observed 2024 export, 10 sites)
 
 - 75 of 120 site-months have at most 20% of label pixels missing. Gaps follow each site's rainy season; Kisumu is the only clean site. Radar is complete in all months.
+
+## Prototype case study: Ouagadougou, Jan-Dec 2024 (unseen city, 2026-10-24)
+
+- Location 12.3682, -1.5271. Not a training site; nearest sites are the test sites 305-329 km away. Model hybrid_seed1, descending passes, no radar in June and July.
+- The model's typical map (each pixel's most frequent class over the year) agrees with ESA WorldCover 2021 on 80% of pixels.
+- Caveat: built covers 72% of the area in WorldCover, so a map that says "built" everywhere would already score 72%. The 80% is only about 8 points above that baseline.
+- Class shares, model vs WorldCover: built 84.5 vs 72.1 (+12.4 pp), low vegetation 0.9 vs 9.2 (-8.3), trees 3.9 vs 7.7 (-3.8), water 3.0 vs 2.2, crops 7.3 vs 6.5, bare 0.6 vs 2.1.
+- What the model gets right: the reservoir chain, the forest/park in the north-east, and the airport strip.
+- Where it is wrong: it absorbs small green patches (parks, grass strips, scattered trees inside the city) into built and draws smooth blobs instead of fine detail. Likely causes: built radar returns (double bounce) dominate mixed 10 m pixels, speckle, and the model learned to smooth.
+- Report point: overall agreement is inflated by a dominant class, so per-class agreement is needed.

@@ -7,7 +7,7 @@ weights/
 __pycache__/
 PROJECT_SUMMARY.md
 upload/
-runs/
+*_smoke*
 queue.log
 prototype_runs/
 streamlit.log

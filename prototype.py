@@ -17,13 +17,12 @@ import numpy as np
 import segmentation_models_pytorch as smp
 import torch
 
-from lulc import CLASSES, REMAP, scale_radar
+from lulc import CLASSES, COLORS, REMAP, scale_radar
 
 PROJECT = os.environ.get("EE_PROJECT", "deep-learning-project-512013")
-WEIGHTS = os.environ.get("MODEL_WEIGHTS", "weights/hybrid_seed1.pt")
+WEIGHTS = os.environ.get("MODEL_WEIGHTS", "experiments/exp1_data/weights/hybrid_seed1.pt")
 SIZE_PX, SCALE = 1000, 10          # a 10 km square of 10 m pixels, the same as the training data
 NO_DATA = 255
-COLORS = ["#2b83ba", "#1a7837", "#a6d96a", "#5ab4ac", "#fdae61", "#d7191c", "#7a5c3e"]   # one per class, in CLASSES order (bare: dark brown, unlike crops)
 WC_TO_DW = {10: 1, 20: 5, 30: 2, 40: 4, 50: 6, 60: 7, 70: 8, 80: 0, 90: 3, 95: 1}       # ESA WorldCover -> Dynamic World index, as in 01_data_export.ipynb
 device = "cuda" if torch.cuda.is_available() else "cpu"
 

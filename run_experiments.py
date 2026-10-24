@@ -4,16 +4,17 @@
     uv run python run_experiments.py --list       show the queue and which runs are done
     uv run python run_experiments.py --smoke      a tiny quick version of each run, to check the setup first
     uv run python run_experiments.py --only 0,3   run only these entries of the queue (counting from 0)
+    uv run python run_experiments.py --exp exp2_architecture   run only the runs of this experiment
     uv run python run_experiments.py --rescore    score every saved model again on the CURRENT validation sites (no training).
                                                   Use it after validation sites were added: the old validation numbers are kept
                                                   as val_*_oldval in the results files, the test numbers are not touched.
 
 To keep it going when your browser or connection drops:
-    nohup uv run python run_experiments.py > queue.log 2>&1 &        then: tail -f queue.log
+    nohup uv run python -u run_experiments.py > queue.log 2>&1 &        then: tail -f queue.log
 
-Each run is the training notebook (02_train.ipynb) with the settings below changed. For every run you get a folder
-runs/<name>/ with log.txt (the training log, with seconds per epoch) and every picture the notebook draws, as numbered PNGs.
-The weights go to weights/<name>.pt and the scores to results_<name>.json, as in the notebook.
+Each run is the training notebook (02_train.ipynb) with the settings below changed. Everything a run makes goes to
+experiments/<experiment>/: runs/<name>/ gets log.txt (the training log, with seconds per epoch) and every picture the
+notebook draws, as numbered PNGs; weights/<name>.pt the weights; results/results_<name>.json the scores.
 """
 import ast
 import json
@@ -25,9 +26,11 @@ import time
 
 NOTEBOOK = "02_train.ipynb"
 
-# The queue. Each entry changes some settings of the notebook's first code cell. Order = what runs first.
-# Settings you can change: MONTHLY_ONLY, CONTEXT, AGREE, FILTER, YEARS, SEED, EPOCHS, BATCH, LR, QUANTIZE.
-EXPERIMENTS = [
+# The queue, one list per experiment (= folder under experiments/). Each entry changes some settings of the notebook's
+# first code cell. Order = what runs first; the numbers count across all experiments, for --only.
+# Settings you can change: MONTHLY_ONLY, ARCH, PRETRAINED, CONTEXT, AGREE, FILTER, YEARS, SEED, EPOCHS, BATCH, LR, QUANTIZE.
+QUEUES = {
+    "exp1_data": [                                # what the data does: sites vs years, label filter, radar filters
     dict(YEARS=(2024,), SEED=0),                  # 0  sites effect: 21 sites, 2024 only (about the same steps as the old runs)
     dict(YEARS=(2024,), SEED=1),                  # 1
     dict(SEED=1),                                 # 2  second seed of the 4-year run (seed 0 is done)
@@ -36,7 +39,23 @@ EXPERIMENTS = [
     dict(FILTER="smooth", SEED=0),                # 5  the standard speckle filter
     dict(YEARS=(2024,), EPOCHS=60, SEED=0),       # 6  years effect: 2024 only but as many steps as the 4-year run
     dict(YEARS=(2024,), EPOCHS=60, SEED=1),       # 7
-]
+    ],
+    # architecture x context, compared with the two hybrid runs of exp1. One of each first, then the second seeds,
+    # so half-way through there is already one number per variant.
+    "exp2_architecture": [
+    dict(CONTEXT=True, QUANTIZE=False, SEED=0),                          # 8   context only
+    dict(ARCH="UnetPlusPlus", QUANTIZE=False, SEED=0),                   # 9   U-Net++ only
+    dict(PRETRAINED=True, QUANTIZE=False, SEED=0),                       # 10  ImageNet only
+    dict(ARCH="UnetPlusPlus", CONTEXT=True, QUANTIZE=False, SEED=0),     # 11  U-Net++ + context
+    dict(PRETRAINED=True, CONTEXT=True, QUANTIZE=False, SEED=0),         # 12  ImageNet + context
+    dict(CONTEXT=True, QUANTIZE=False, SEED=1),                          # 13
+    dict(ARCH="UnetPlusPlus", QUANTIZE=False, SEED=1),                   # 14
+    dict(PRETRAINED=True, QUANTIZE=False, SEED=1),                       # 15
+    dict(ARCH="UnetPlusPlus", CONTEXT=True, QUANTIZE=False, SEED=1),     # 16
+    dict(PRETRAINED=True, CONTEXT=True, QUANTIZE=False, SEED=1),         # 17
+    ],
+}
+EXPERIMENTS = [dict(e, EXPERIMENT=x) for x, runs in QUEUES.items() for e in runs]
 
 
 def settings_cell_with(overrides, smoke):
@@ -52,10 +71,15 @@ def settings_cell_with(overrides, smoke):
     return cell
 
 
-def run_name(overrides, smoke):
+def run_paths(overrides, smoke):
+    """(run name, its experiment folder), as the notebook will compute them."""
     g = {}
     exec(settings_cell_with(overrides, smoke), g)
-    return g["NAME"]
+    return g["NAME"], g["OUT"]
+
+
+def results_file(name, out):
+    return f"{out}/results/results_{name}.json"
 
 
 def child(overrides, smoke):
@@ -71,7 +95,7 @@ def child(overrides, smoke):
     count = [0]
 
     def save_figures(*a, **k):
-        folder = f"runs/{g['NAME']}"
+        folder = f"{g['OUT']}/runs/{g['NAME']}"
         os.makedirs(folder, exist_ok=True)
         for num in plt.get_fignums():
             fig = plt.figure(num)
@@ -88,7 +112,7 @@ def child(overrides, smoke):
 
 
 def rescore():
-    """Scores every saved model (weights/*.pt) again on the current validation sites and updates its results file."""
+    """Scores every saved model (experiments/*/weights/*.pt) again on the current validation sites and updates its results file."""
     import glob
     import numpy as np
     import segmentation_models_pytorch as smp
@@ -99,16 +123,18 @@ def rescore():
     C = len(CLASSES)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     datasets = {}                                              # one validation dataset per way of preparing the radar
-    for w in sorted(glob.glob("weights/*.pt")):
+    for w in sorted(glob.glob("experiments/*/weights/*.pt")):
         name = os.path.basename(w)[:-3]
-        if not os.path.exists(f"results_{name}.json") or name.endswith("_smoke"):
+        f = results_file(name, os.path.dirname(os.path.dirname(w)))
+        if not os.path.exists(f) or name.endswith("_smoke"):
             continue
         ctx = "_ctx" in name                                   # the run name says how its input was built
         kind = "sharpen" if "sharpen" in name else "smooth" if "smooth" in name else None
         if (ctx, kind) not in datasets:
             datasets[(ctx, kind)] = LULCDataset("val", context=ctx, filter=kind)
         ds = datasets[(ctx, kind)]
-        model = smp.Unet("resnet34", encoder_weights=None, in_channels=ds.channels, classes=C).to(device)
+        arch = smp.UnetPlusPlus if "_upp" in name else smp.Unet
+        model = arch("resnet34", encoder_weights=None, in_channels=ds.channels, classes=C).to(device)
         model.load_state_dict(torch.load(w, map_location=device))
         model.eval()
         cm = np.zeros((C, C), np.int64)
@@ -120,23 +146,23 @@ def rescore():
                 cm += np.bincount((y[keep] * C + pred[keep]).numpy(), minlength=C * C).reshape(C, C)
         tp = np.diag(cm).astype(float)
         iou = tp / np.maximum(tp + (cm.sum(0) - tp) + (cm.sum(1) - tp), 1)
-        r = json.load(open(f"results_{name}.json"))
+        r = json.load(open(f))
         for k in ("val_miou", "val_water_iou", "val_water_precision"):
             if k in r and k + "_oldval" not in r:
                 r[k + "_oldval"] = r[k]                        # keep what the old validation set said
         r["val_miou"] = float(iou[cm.sum(1) > 0].mean())
         r["val_water_iou"] = float(iou[0])
         r["val_water_precision"] = float(tp[0] / max(cm[:, 0].sum(), 1))
-        json.dump(r, open(f"results_{name}.json", "w"))
+        json.dump(r, open(f, "w"))
         print(f"{name:34s} val mIoU {r['val_miou']:.3f} (was {r.get('val_miou_oldval', float('nan')):.3f})   "
               f"water IoU {r['val_water_iou']:.3f}   water precision {r['val_water_precision']:.3f}", flush=True)
 
 
-def show_scores(names):
+def show_scores(paths):
     print("\nSUMMARY (validation = the numbers to decide with, test = the final exam)")
     print(f"{'run':34s}{'val mIoU':>10s}{'val water':>11s}{'test mIoU':>11s}{'test water':>12s}")
-    for n in names:
-        f = f"results_{n}.json"
+    for n, out in paths:
+        f = results_file(n, out)
         if os.path.exists(f):
             r = json.load(open(f))
             print(f"{n:34s}{r.get('val_miou', float('nan')):10.3f}{r.get('val_water_iou', float('nan')):11.3f}"
@@ -152,36 +178,36 @@ def main():
     if "--rescore" in args:
         rescore()
         return
-    only = None
-    if "--only" in args:
-        only = {int(i) for i in args[args.index("--only") + 1].split(",")}
-    todo = [(i, e) for i, e in enumerate(EXPERIMENTS) if only is None or i in only]
-    names = {i: run_name(e, smoke) for i, e in todo}
+    only = {int(i) for i in args[args.index("--only") + 1].split(",")} if "--only" in args else None
+    exp = args[args.index("--exp") + 1] if "--exp" in args else None
+    todo = [(i, e) for i, e in enumerate(EXPERIMENTS)
+            if (only is None or i in only) and (exp is None or e["EXPERIMENT"] == exp)]
+    paths = {i: run_paths(e, smoke) for i, e in todo}
 
     if "--list" in args:
         for i, e in todo:
-            done = os.path.exists(f"results_{names[i]}.json")
-            print(f"{i}  {'done   ' if done else 'pending'}  {names[i]:34s} {e}")
+            done = os.path.exists(results_file(*paths[i]))
+            print(f"{i:2d}  {'done   ' if done else 'pending'}  {paths[i][0]:34s} {e}")
         return
 
-    os.makedirs("runs", exist_ok=True)
     start = time.time()
     for i, e in todo:
-        name = names[i]
-        if os.path.exists(f"results_{name}.json") and not smoke:
+        name, out = paths[i]
+        if os.path.exists(results_file(name, out)) and not smoke:
             print(f"[{i}] {name}: already done, skipped", flush=True)
             continue
-        os.makedirs(f"runs/{name}", exist_ok=True)
+        folder = f"{out}/runs/{name}"
+        os.makedirs(folder, exist_ok=True)
         print(f"[{i}] {name}: started {time.strftime('%H:%M')}  {e}", flush=True)
         t = time.time()
-        with open(f"runs/{name}/log.txt", "w") as log:
+        with open(f"{folder}/log.txt", "w") as log:
             code = subprocess.run([sys.executable, __file__, "--one", repr(e)] + (["--smoke"] if smoke else []),
                                   stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, MPLBACKEND="Agg")).returncode
-        ok = code == 0 and os.path.exists(f"results_{name}.json")
-        print(f"[{i}] {name}: {'finished' if ok else 'FAILED (see runs/' + name + '/log.txt)'} in {(time.time() - t) / 60:.1f} min, "
-              f"{len(os.listdir(f'runs/{name}')) - 1} pictures saved in runs/{name}/", flush=True)
+        ok = code == 0 and os.path.exists(results_file(name, out))
+        print(f"[{i}] {name}: {'finished' if ok else f'FAILED (see {folder}/log.txt)'} in {(time.time() - t) / 60:.1f} min, "
+              f"{len(os.listdir(folder)) - 1} pictures saved in {folder}/", flush=True)
     print(f"\nqueue finished in {(time.time() - start) / 60:.1f} min")
-    show_scores(names.values())
+    show_scores(paths.values())
 
 
 if __name__ == "__main__":

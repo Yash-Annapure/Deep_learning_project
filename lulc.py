@@ -12,6 +12,7 @@ import torch
 from torch.utils.data import Dataset
 
 CLASSES = ["water", "trees", "low_vegetation", "flooded_vegetation", "crops", "built", "bare"]
+COLORS = ["#2b83ba", "#1a7837", "#a6d96a", "#5ab4ac", "#fdae61", "#d7191c", "#7a5c3e"]   # one per class, in CLASSES order (bare: dark brown, unlike crops)
 IGNORE = 255
 
 # Dynamic World index -> our index. DW order: water, trees, grass, flooded, crops, shrub, built, bare, snow.
