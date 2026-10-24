@@ -148,18 +148,18 @@ def maps_figure(result):
     import matplotlib.pyplot as plt
     from matplotlib.colors import ListedColormap
     cmap = ListedColormap(COLORS)
-    fig, ax = plt.subplots(3, 4, figsize=(16, 13.5))
+    fig, ax = plt.subplots(3, 4, figsize=(16, 14), layout="constrained")   # constrained: keeps room for every title
     for a, month, mp, n in zip(ax.ravel(), result["months"], result["maps"], result["scenes"]):
         if mp is None:
             a.set_facecolor("lightgrey")
             a.text(0.5, 0.5, "no radar\nthis month", ha="center", va="center", transform=a.transAxes)
         else:
             a.imshow(mp, cmap=cmap, vmin=-0.5, vmax=len(CLASSES) - 0.5, interpolation="nearest")
+        a.set_box_aspect(1)                                    # every panel square, including "no radar" ones
         a.set_title(f"{month}  ({n} scenes)")
         a.set_xticks([]); a.set_yticks([])
-    fig.legend([plt.Rectangle((0, 0), 1, 1, color=c) for c in COLORS], CLASSES, loc="lower center", ncol=len(CLASSES))
+    fig.legend([plt.Rectangle((0, 0), 1, 1, color=c) for c in COLORS], CLASSES, loc="outside lower center", ncol=len(CLASSES))
     fig.suptitle(f"Land cover at {result['lat']:.4f}, {result['lon']:.4f} (10 km x 10 km), {result['pass_dir'].lower()} passes")
-    plt.tight_layout(rect=(0, 0.04, 1, 0.97))
     return fig
 
 
