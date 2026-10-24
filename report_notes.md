@@ -83,6 +83,39 @@ All runs: hybrid labels, 2 input channels, U-Net ResNet-34 from scratch, 15 epoc
 - Methodological finding: the validation sites do not include dry regions, so they cannot see effects that show only on the dry test sites (the filters, the agreement filter). Plan: add dry-region validation sites.
 - Target remark: scoring is against Dynamic World, which agrees with WorldCover on only about 60% of pixels, so pixel accuracy near 95% is not a meaningful goal; report per-class IoU and compare with a baseline and with the label agreement.
 
+## Years matter after all: overfitting at equal training steps (queue runs 6-7, confirmed with 2 seeds)
+
+| run (21 sites) | training steps | val mIoU | test mIoU | test water IoU |
+|---|---|---|---|---|
+| 2024 only, 15 epochs (2 seeds) | about 12k | 0.326 / 0.337 | 0.350 / 0.335 | 0.467 / 0.382 |
+| 2024 only, 60 epochs (2 seeds) | about 46k | 0.343 / 0.350 | 0.260 / 0.280 | 0.078 / 0.132 |
+| 4 years, 15 epochs (2 seeds) | about 46k | 0.350 / 0.362 | 0.335 / 0.335 | 0.423 / 0.417 |
+
+With the same number of steps, training on one year overfits (every image seen 60 times) and the false water returns on the dry test sites; four years of the same places (different weather and moisture) prevent this and also make results more stable between seeds. Conclusion: at short training, sites matter most; for longer training, the extra years are needed. Validation (no dry sites at the time) did not detect the overfitting; the model was picked by its best validation score, so the bad weights still won. This motivated the dry-region validation sites.
+
+## Sentinel-1 limitations, with evidence from this project (critical discussion)
+
+| Limitation | Plain words | Seen in this project |
+|---|---|---|
+| No colour | radar measures structure and moisture; structurally similar classes look alike | crops / low vegetation / shrub confusion (crops IoU about 0.16) |
+| Smooth = dark | smooth surfaces scatter the signal away; calm water and smooth dry ground both look dark | false water in dry regions (fixed mostly by dry-region training sites) |
+| Wind on water | rough water looks brighter | some water missed |
+| Speckle | grainy noise, needs averaging | only 2-6 scenes per month, noisy monthly composites |
+| Coarse effective resolution | IW GRD is about 20 m true resolution on a 10 m grid; edges and small objects become mixed pixels | errors along class borders |
+| Moisture and season | rain and wet soil change backscatter without any land-use change | seasonal effects that can look like change |
+| Side-looking geometry | radar shadow and distortion in hilly terrain; buildings look different from each side | orbit direction changes between years at 7 of 28 sites |
+| C-band wavelength | sees the canopy top, not underneath | flooded vegetation IoU about 0.10 |
+| Coverage gaps | some months have no scene in the chosen direction | 12 missing site-months |
+
+Short version: Sentinel-1 is good at classes with a distinct structure or wetness (built-up bright, calm water dark) and weak at structurally similar classes (crops, grass, shrub, bare) and at borders.
+
+## Improvement ideas queued for after prototype v1 (learner's ideas, 2026-10-24)
+
+Weak classes split into two groups: look-alikes with plenty of data (crops 21% of training pixels, trees 16%) and rare classes (flooded vegetation 3%, bare 3%).
+1. Rare classes, synthetic examples built from REAL pixels (label-safe): copy-paste of real rare-class patches (radar + label) into other training images; oversampling of windows that contain rare classes. Not generative synthetic radar.
+2. Use the model's known confusions to teach it (learner's idea): hard-example mining (show wrongly predicted patches more often), focal loss (more weight on uncertain pixels), cost-sensitive loss (specific mix-ups such as crops->low vegetation cost more). Combine with the label-agreement filter, because part of the crops / low vegetation confusion is in the labels (the two label sources disagree on about 40% of those pixels).
+3. Look-alikes may need a better signal than more data: the pattern across months (fields change through the growing season, grass and scrub less).
+
 ## Planned model variant for later (not iteration 1)
 
 Use extra data during training only, so the final model stays Sentinel-1-only (the brief requires Sentinel-1 as the only input). Options, in order of effort:

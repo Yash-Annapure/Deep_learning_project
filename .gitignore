@@ -9,3 +9,5 @@ PROJECT_SUMMARY.md
 upload/
 runs/
 queue.log
+prototype_runs/
+streamlit.log

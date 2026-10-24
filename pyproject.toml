@@ -9,5 +9,6 @@ dependencies = [
     "matplotlib>=3.11.2",
     "numpy>=2.5.4",
     "segmentation-models-pytorch>=0.5.0",
+    "streamlit>=1.66.1",
     "torch>=2.14.1",
 ]
