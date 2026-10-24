@@ -24,4 +24,4 @@ echo "== 4. Checks"
 .venv/bin/python -c "import torch; print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NOT available')"
 .venv/bin/python -c "import ee; ee.Initialize(project='deep-learning-project-512013'); print('Earth Engine: logged in')" 2>/dev/null \
   || echo "Earth Engine: NOT logged in (see step 2)"
-command -v cloudflared >/dev/null && echo "cloudflared: found" || echo "cloudflared: not on PATH (use its full path)"
+[ -x ~/vault/bin/cloudflared ] && echo "cloudflared: found in ~/vault/bin" || echo "cloudflared: missing, download it into ~/vault/bin"

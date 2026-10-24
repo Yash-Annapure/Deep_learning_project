@@ -17,13 +17,14 @@ import numpy as np
 import segmentation_models_pytorch as smp
 import torch
 
-from lulc import CLASSES, scale_radar
+from lulc import CLASSES, REMAP, scale_radar
 
 PROJECT = os.environ.get("EE_PROJECT", "deep-learning-project-512013")
 WEIGHTS = os.environ.get("MODEL_WEIGHTS", "weights/hybrid_seed1.pt")
 SIZE_PX, SCALE = 1000, 10          # a 10 km square of 10 m pixels, the same as the training data
 NO_DATA = 255
-COLORS = ["#2b83ba", "#1a7837", "#a6d96a", "#5ab4ac", "#fdae61", "#d7191c", "#c2a878"]   # one per class, in CLASSES order
+COLORS = ["#2b83ba", "#1a7837", "#a6d96a", "#5ab4ac", "#fdae61", "#d7191c", "#7a5c3e"]   # one per class, in CLASSES order (bare: dark brown, unlike crops)
+WC_TO_DW = {10: 1, 20: 5, 30: 2, 40: 4, 50: 6, 60: 7, 70: 8, 80: 0, 90: 3, 95: 1}       # ESA WorldCover -> Dynamic World index, as in 01_data_export.ipynb
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # ponytail: the Earth Engine helpers below repeat the ones in 01_data_export.ipynb (same maths, so the prototype prepares
@@ -106,6 +107,14 @@ def fetch_month(region, grid, pass_dir, year, month):
     return (download(col.select(["VV", "VH"]).median(), grid).astype("float32"), n) if n else (None, 0)
 
 
+def worldcover(grid):
+    """ESA WorldCover 2021 for the same square, in our 7 classes (255 where it has no counterpart). An independent map:
+    the prototype's model was trained on Dynamic World only."""
+    wc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map")
+    img = wc.remap(list(WC_TO_DW), list(WC_TO_DW.values()), NO_DATA).unmask(NO_DATA)
+    return REMAP[download(img, grid)[0].astype(np.uint8)]
+
+
 @torch.no_grad()
 def predict(model, radar_db):
     """(2, H, W) radar in dB -> (H, W) class map. Scaled exactly like the training data, padded to a multiple of 32."""
@@ -125,8 +134,10 @@ def run(lat, lon, start, model, workers=6):
     pass_dir = pick_pass(region, window, window.advance(12, "month"))
     if pass_dir is None:
         raise ValueError("no Sentinel-1 scenes at this location in these 12 months")
-    with ThreadPoolExecutor(max_workers=workers) as pool:          # the 12 months are fetched at the same time
+    with ThreadPoolExecutor(max_workers=workers) as pool:          # the 12 months (and WorldCover) are fetched at the same time
+        wc_job = pool.submit(worldcover, grid)
         fetched = list(pool.map(lambda ym: fetch_month(region, grid, pass_dir, *ym), months))
+        wc = wc_job.result()
     maps = [predict(model, radar) if radar is not None else None for radar, _ in fetched]
 
     C = len(CLASSES)
@@ -136,11 +147,22 @@ def run(lat, lon, start, model, workers=6):
             shares[i] = np.bincount(mp.ravel(), minlength=C)[:C] / mp.size * 100
     change = np.full((12, C), np.nan)                              # points of change against the previous month WITH data
     have = [i for i in range(12) if maps[i] is not None]
+    if not have:
+        raise ValueError("none of the 12 months has radar at this location")
     for prev, cur in zip(have, have[1:]):
         change[cur] = shares[cur] - shares[prev]
     total = shares[have[-1]] - shares[have[0]] if len(have) >= 2 else np.full(C, np.nan)
+
+    # independent check: the model's "typical" map (each pixel's most frequent class over the months) against WorldCover
+    votes = np.stack([sum((maps[i] == c).astype(np.uint8) for i in have) for c in range(C)])
+    typical = votes.argmax(0).astype(np.uint8)
+    valid = wc != NO_DATA
+    wc_shares = np.bincount(wc[valid], minlength=C)[:C] / max(valid.sum(), 1) * 100
+    typical_shares = np.bincount(typical.ravel(), minlength=C)[:C] / typical.size * 100
+    agreement = float((typical[valid] == wc[valid]).mean()) if valid.any() else float("nan")
     return {"months": [f"{y}-{m:02d}" for y, m in months], "maps": maps, "shares": shares, "change": change,
-            "total": total, "scenes": [n for _, n in fetched], "pass_dir": pass_dir, "lat": lat, "lon": lon}
+            "total": total, "scenes": [n for _, n in fetched], "pass_dir": pass_dir, "lat": lat, "lon": lon,
+            "typical": typical, "wc": wc, "typical_shares": typical_shares, "wc_shares": wc_shares, "agreement": agreement}
 
 
 def maps_figure(result):
@@ -163,6 +185,25 @@ def maps_figure(result):
     return fig
 
 
+def comparison_figure(result):
+    """WorldCover 2021 next to the model's typical map, plus where the two agree."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap
+    cmap = ListedColormap(COLORS)
+    fig, ax = plt.subplots(1, 3, figsize=(16, 5.8), layout="constrained")
+    ax[0].imshow(np.ma.masked_equal(result["wc"], NO_DATA), cmap=cmap, vmin=-0.5, vmax=len(CLASSES) - 0.5, interpolation="nearest")
+    ax[0].set_title("ESA WorldCover 2021 (independent)")
+    ax[1].imshow(result["typical"], cmap=cmap, vmin=-0.5, vmax=len(CLASSES) - 0.5, interpolation="nearest")
+    ax[1].set_title("model: each pixel's most frequent class")
+    same = np.where(result["wc"] == NO_DATA, np.nan, (result["typical"] == result["wc"]).astype(float))
+    ax[2].imshow(np.ma.masked_invalid(same), cmap="RdYlGn", vmin=0, vmax=1, interpolation="nearest")
+    ax[2].set_title(f"agree (green) / disagree (red): {result['agreement']:.0%}")
+    for a in ax:
+        a.set_xticks([]); a.set_yticks([])
+    fig.legend([plt.Rectangle((0, 0), 1, 1, color=c) for c in COLORS], CLASSES, loc="outside lower center", ncol=len(CLASSES))
+    return fig
+
+
 def check(result):
     """Self-check of the calculation: each month's shares add up to 100, and changes add up to 0 (area moves between classes)."""
     for i, mp in enumerate(result["maps"]):
@@ -173,6 +214,9 @@ def check(result):
     assert np.allclose(result["change"][rows].sum(axis=1), 0, atol=1e-6)
     if not np.isnan(result["total"]).any():
         assert abs(result["total"].sum()) < 1e-6
+    assert abs(result["typical_shares"].sum() - 100) < 1e-6
+    assert (result["wc"] != NO_DATA).sum() == 0 or abs(result["wc_shares"].sum() - 100) < 1e-6
+    assert np.isnan(result["agreement"]) or 0 <= result["agreement"] <= 1
 
 
 if __name__ == "__main__":
@@ -187,10 +231,15 @@ if __name__ == "__main__":
     check(res)
     os.makedirs(a.out, exist_ok=True)
     name = f"{a.out}/{a.lat:.4f}_{a.lon:.4f}_{a.start}"
-    maps_figure(res).savefig(f"{name}_maps.png", dpi=80)
+    maps_figure(res).savefig(f"{name}_maps.png", dpi=80, bbox_inches="tight")
+    comparison_figure(res).savefig(f"{name}_worldcover.png", dpi=80, bbox_inches="tight")
     np.set_printoptions(suppress=True)
     print("% of area per class each month:\n", " " * 8, " ".join(f"{c[:8]:>9s}" for c in CLASSES))
     for m, row in zip(res["months"], res["shares"]):
         print(f"{m:8s}", " ".join(f"{v:9.1f}" for v in row))
     print("\ntotal change first -> last month (points):", {c: round(float(v), 1) for c, v in zip(CLASSES, res["total"])})
-    print(f"\nscenes per month: {res['scenes']}  ({res['pass_dir']})   picture saved: {name}_maps.png   self-check OK")
+    print("\nindependent check, ESA WorldCover 2021 vs the model's typical map:")
+    print("  WorldCover %:", {c: round(float(v), 1) for c, v in zip(CLASSES, res["wc_shares"])})
+    print("  model %     :", {c: round(float(v), 1) for c, v in zip(CLASSES, res["typical_shares"])})
+    print(f"  pixels where they agree: {res['agreement']:.0%}")
+    print(f"\nscenes per month: {res['scenes']}  ({res['pass_dir']})   pictures saved: {name}_maps.png, {name}_worldcover.png   self-check OK")

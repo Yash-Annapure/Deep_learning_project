@@ -1,7 +1,8 @@
 """Streamlit page for the prototype:  uv run streamlit run app.py
 
 Enter a location and a start month; the page fetches 12 months of Sentinel-1 radar from Earth Engine, labels every
-pixel with the trained model, and shows the 12 maps, the share of each class per month and how it changed.
+pixel with the trained model, and shows the 12 maps, the share of each class per month, how it changed, and an
+independent check against ESA WorldCover.
 """
 import datetime as dt
 
@@ -24,6 +25,11 @@ def setup():
 @st.cache_data(show_spinner=False)
 def compute(lat, lon, start):
     return P.run(lat, lon, start, model)
+
+
+def table(df):
+    """Full-width table with one decimal, and a dash where there is no value (no radar, or nothing to compare with)."""
+    st.dataframe(df.style.format("{:.1f}", na_rep="–"), width="stretch")
 
 
 model = setup()
@@ -59,17 +65,22 @@ if missing:
     st.warning(f"No radar in {', '.join(missing)}. Those months are left out, and changes are measured against the last month with data.")
 
 shares = pd.DataFrame(res["shares"], index=res["months"], columns=P.CLASSES)
-left, right = st.columns(2)
-with left:
-    st.subheader("Share of the area per class (%)")
-    st.dataframe(shares.round(1), width="stretch")
-with right:
-    st.subheader("The same over time")
-    st.line_chart(shares, color=P.COLORS)
+st.subheader("Share of the area per class over the 12 months (%)")
+st.line_chart(shares.dropna(), color=P.COLORS)                   # months without radar are skipped, not drawn as gaps
+table(shares)
 
 st.subheader("Change from the previous month (percentage points)")
-st.dataframe(pd.DataFrame(res["change"], index=res["months"], columns=P.CLASSES).round(1), width="stretch")
+table(pd.DataFrame(res["change"], index=res["months"], columns=P.CLASSES))
 st.subheader(f"Total change, {res['months'][0]} to {res['months'][-1]} (percentage points)")
-st.dataframe(pd.DataFrame([res["total"]], columns=P.CLASSES, index=["total"]).round(1), width="stretch")
+table(pd.DataFrame([res["total"]], columns=P.CLASSES, index=["total"]))
 st.caption(f"{res['pass_dir'].capitalize()} passes, scenes per month: {res['scenes']}. Changes include classification "
            "errors and seasonal effects (for example wet versus dry season), not only real land-use change.")
+
+st.header("Independent check: ESA WorldCover 2021")
+st.pyplot(P.comparison_figure(res))
+st.metric("Pixels where the model's typical map agrees with WorldCover", f"{res['agreement']:.0%}")
+table(pd.DataFrame([res["typical_shares"], res["wc_shares"]], columns=P.CLASSES,
+                   index=["model (each pixel's most frequent class)", "ESA WorldCover 2021"]))
+st.caption("WorldCover was not used to train this model, so it is an independent second opinion, not the truth: it is from "
+           "2021 (the land may have changed since), it uses its own class definitions, and it is partly made from Sentinel-1 too. "
+           "For reference, Dynamic World (the training labels) and WorldCover agree on only about 60% of pixels at our sites.")
