@@ -1,0 +1,124 @@
+device: cuda NVIDIA RTX A6000
+{'train': 12348, 'val': 2352, 'test': 1764} patches
+12,348 windows, 1.0 GB of radar and labels kept on cuda
+2,352 windows, 0.2 GB of radar and labels kept on cuda
+1,764 windows, 0.1 GB of radar and labels kept on cuda
+{'water': 1.16, 'trees': 0.72, 'low_vegetation': 0.69, 'flooded_vegetation': 1.61, 'crops': 0.62, 'built': 0.48, 'bare': 1.71}
+epoch  1/60  loss 0.867  val OA 0.416  val mIoU 0.225  (41s)
+epoch  2/60  loss 0.786  val OA 0.314  val mIoU 0.185  (33s)
+epoch  3/60  loss 0.744  val OA 0.520  val mIoU 0.283  (33s)
+epoch  4/60  loss 0.714  val OA 0.408  val mIoU 0.229  (33s)
+epoch  5/60  loss 0.690  val OA 0.403  val mIoU 0.188  (33s)
+epoch  6/60  loss 0.677  val OA 0.432  val mIoU 0.215  (33s)
+epoch  7/60  loss 0.670  val OA 0.540  val mIoU 0.269  (33s)
+epoch  8/60  loss 0.653  val OA 0.587  val mIoU 0.329  (33s)
+epoch  9/60  loss 0.648  val OA 0.498  val mIoU 0.252  (33s)
+epoch 10/60  loss 0.640  val OA 0.346  val mIoU 0.223  (33s)
+epoch 11/60  loss 0.630  val OA 0.593  val mIoU 0.319  (33s)
+epoch 12/60  loss 0.623  val OA 0.356  val mIoU 0.209  (33s)
+epoch 13/60  loss 0.620  val OA 0.522  val mIoU 0.291  (33s)
+epoch 14/60  loss 0.615  val OA 0.119  val mIoU 0.107  (33s)
+epoch 15/60  loss 0.604  val OA 0.457  val mIoU 0.224  (33s)
+epoch 16/60  loss 0.602  val OA 0.377  val mIoU 0.201  (33s)
+epoch 17/60  loss 0.598  val OA 0.338  val mIoU 0.194  (33s)
+epoch 18/60  loss 0.590  val OA 0.467  val mIoU 0.261  (33s)
+epoch 19/60  loss 0.583  val OA 0.400  val mIoU 0.225  (33s)
+epoch 20/60  loss 0.579  val OA 0.589  val mIoU 0.337  (33s)
+epoch 21/60  loss 0.578  val OA 0.480  val mIoU 0.241  (33s)
+epoch 22/60  loss 0.574  val OA 0.590  val mIoU 0.332  (33s)
+epoch 23/60  loss 0.565  val OA 0.580  val mIoU 0.326  (33s)
+epoch 24/60  loss 0.562  val OA 0.584  val mIoU 0.321  (33s)
+epoch 25/60  loss 0.555  val OA 0.423  val mIoU 0.228  (33s)
+epoch 26/60  loss 0.551  val OA 0.557  val mIoU 0.300  (33s)
+epoch 27/60  loss 0.548  val OA 0.535  val mIoU 0.299  (33s)
+epoch 28/60  loss 0.545  val OA 0.575  val mIoU 0.311  (33s)
+epoch 29/60  loss 0.538  val OA 0.499  val mIoU 0.284  (33s)
+epoch 30/60  loss 0.535  val OA 0.532  val mIoU 0.303  (33s)
+epoch 31/60  loss 0.533  val OA 0.570  val mIoU 0.316  (33s)
+epoch 32/60  loss 0.529  val OA 0.579  val mIoU 0.320  (33s)
+epoch 33/60  loss 0.526  val OA 0.531  val mIoU 0.301  (33s)
+epoch 34/60  loss 0.517  val OA 0.466  val mIoU 0.263  (33s)
+epoch 35/60  loss 0.516  val OA 0.595  val mIoU 0.337  (33s)
+epoch 36/60  loss 0.512  val OA 0.503  val mIoU 0.282  (33s)
+epoch 37/60  loss 0.510  val OA 0.584  val mIoU 0.325  (33s)
+epoch 38/60  loss 0.507  val OA 0.613  val mIoU 0.334  (33s)
+epoch 39/60  loss 0.506  val OA 0.474  val mIoU 0.266  (33s)
+epoch 40/60  loss 0.502  val OA 0.601  val mIoU 0.342  (33s)
+epoch 41/60  loss 0.498  val OA 0.540  val mIoU 0.302  (33s)
+epoch 42/60  loss 0.495  val OA 0.579  val mIoU 0.312  (33s)
+epoch 43/60  loss 0.493  val OA 0.598  val mIoU 0.343  (33s)
+epoch 44/60  loss 0.490  val OA 0.573  val mIoU 0.325  (33s)
+epoch 45/60  loss 0.490  val OA 0.573  val mIoU 0.327  (33s)
+epoch 46/60  loss 0.486  val OA 0.549  val mIoU 0.315  (33s)
+epoch 47/60  loss 0.486  val OA 0.548  val mIoU 0.312  (33s)
+epoch 48/60  loss 0.484  val OA 0.535  val mIoU 0.306  (33s)
+epoch 49/60  loss 0.481  val OA 0.565  val mIoU 0.324  (33s)
+epoch 50/60  loss 0.480  val OA 0.591  val mIoU 0.339  (33s)
+epoch 51/60  loss 0.479  val OA 0.518  val mIoU 0.295  (33s)
+epoch 52/60  loss 0.479  val OA 0.539  val mIoU 0.308  (33s)
+epoch 53/60  loss 0.477  val OA 0.545  val mIoU 0.312  (33s)
+epoch 54/60  loss 0.475  val OA 0.585  val mIoU 0.335  (33s)
+epoch 55/60  loss 0.475  val OA 0.565  val mIoU 0.325  (33s)
+epoch 56/60  loss 0.474  val OA 0.564  val mIoU 0.324  (33s)
+epoch 57/60  loss 0.474  val OA 0.593  val mIoU 0.341  (33s)
+epoch 58/60  loss 0.474  val OA 0.580  val mIoU 0.333  (33s)
+epoch 59/60  loss 0.474  val OA 0.570  val mIoU 0.326  (33s)
+epoch 60/60  loss 0.474  val OA 0.573  val mIoU 0.330  (33s)
+[hybrid_e60_y24] VALIDATION mIoU 0.343  water IoU 0.570  water precision 0.923
+
+[hybrid_e60_y24] test OA 0.629  mIoU 0.260  over 70,010,439 labelled pixels
+
+class                   IoU     F1      pixels
+water                 0.078  0.145     759,350
+trees                 0.318  0.483   5,500,991
+low_vegetation        0.347  0.515  15,480,003
+flooded_vegetation    0.021  0.041      83,006
+crops                 0.185  0.313   8,511,496
+built                 0.806  0.893  33,015,911
+bare                  0.065  0.122   6,659,682
+
+month     OA   mIoU      pixels
+    1  0.529  0.212   9,633,300
+    2  0.547  0.234   9,633,772
+    3  0.567  0.245   9,633,772
+    4  0.660  0.282   9,633,792
+    5  0.653  0.300   6,422,528
+    6  0.779  0.318     932,500
+    7  0.000  0.000           0
+    8  0.000  0.000           0
+    9  0.193  0.118     255,741
+   10  0.833  0.351   4,598,578
+   11  0.718  0.351   9,633,600
+   12  0.635  0.304   9,632,856
+validation confusion matrix
+real-label pixels: 1,000,000  false-water pixels: 5,226 (0.5% of them)
+what the false water truly is: {'trees': 0.15, 'low_vegetation': 0.03, 'flooded_vegetation': 0.4, 'crops': 0.04, 'built': 0.35, 'bare': 0.02}
+VALIDATION (decide with these)            hybrid      hybrid_agree    hybrid_e60_y24      hybrid_seed1    hybrid_sharpen     hybrid_smooth        hybrid_y24  hybrid_y24_seed1        old_hybrid    old_hybrid_ctxold_hybrid_ctx_seed1  old_hybrid_seed1  old_monthly_only
+  mIoU                                     0.350             0.342             0.343             0.362             0.337             0.362             0.326             0.337             0.273             0.300             0.289             0.273             0.260
+  water IoU                                0.566             0.571             0.570             0.563             0.568             0.569             0.562             0.555             0.474             0.464             0.405             0.409             0.467
+  water precision                          0.910             0.916             0.923             0.911             0.909             0.907             0.917             0.897             0.587             0.661             0.511             0.516             0.615
+
+TEST (final exam)                         hybrid      hybrid_agree    hybrid_e60_y24      hybrid_seed1    hybrid_sharpen     hybrid_smooth        hybrid_y24  hybrid_y24_seed1        old_hybrid    old_hybrid_ctxold_hybrid_ctx_seed1  old_hybrid_seed1  old_monthly_only
+  OA                                       0.688             0.696             0.629             0.690             0.661             0.676             0.682             0.693             0.583             0.640             0.648             0.572             0.541
+  mIoU                                     0.335             0.362             0.260             0.335             0.291             0.293             0.350             0.335             0.232             0.238             0.253             0.211             0.215
+  IoU water                                0.423             0.516             0.078             0.417             0.124             0.204             0.467             0.382             0.065             0.081             0.105             0.065             0.081
+  IoU trees                                0.314             0.295             0.318             0.330             0.313             0.274             0.319             0.309             0.204             0.286             0.221             0.212             0.146
+  IoU low_vegetation                       0.456             0.451             0.347             0.445             0.413             0.437             0.343             0.434             0.323             0.411             0.409             0.289             0.200
+  IoU flooded_vegetation                   0.102             0.070             0.021             0.087             0.093             0.076             0.011             0.029             0.035             0.009             0.017             0.009             0.032
+  IoU crops                                0.163             0.174             0.185             0.140             0.169             0.152             0.229             0.144             0.174             0.065             0.184             0.136             0.204
+  IoU built                                0.813             0.816             0.806             0.816             0.817             0.811             0.808             0.804             0.781             0.803             0.814             0.765             0.772
+  IoU bare                                 0.073             0.212             0.065             0.110             0.109             0.098             0.272             0.247             0.039             0.009             0.017             0.004             0.071
+
+test mIoU by month                        hybrid      hybrid_agree    hybrid_e60_y24      hybrid_seed1    hybrid_sharpen     hybrid_smooth        hybrid_y24  hybrid_y24_seed1        old_hybrid    old_hybrid_ctxold_hybrid_ctx_seed1  old_hybrid_seed1  old_monthly_only
+  month 1                                  0.298             0.298             0.212             0.292             0.219             0.220             0.296             0.262             0.184             0.211             0.224             0.159             0.158
+  month 2                                  0.305             0.334             0.234             0.321             0.256             0.242             0.353             0.303             0.197             0.236             0.237             0.171             0.174
+  month 3                                  0.283             0.325             0.245             0.285             0.266             0.247             0.309             0.309             0.213             0.212             0.236             0.160             0.203
+  month 4                                  0.338             0.359             0.282             0.320             0.311             0.301             0.346             0.346             0.240             0.260             0.305             0.215             0.220
+  month 5                                  0.399             0.446             0.300             0.394             0.362             0.403             0.428             0.421             0.303             0.272             0.324             0.262             0.271
+  month 6                                  0.336             0.358             0.318             0.351             0.332             0.351             0.330             0.354             0.345             0.277             0.340             0.321             0.353
+  month 7                                  0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000
+  month 8                                  0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000             0.000
+  month 9                                  0.115             0.112             0.118             0.133             0.124             0.165             0.116             0.123             0.104             0.055             0.051             0.130             0.149
+  month 10                                 0.363             0.374             0.351             0.374             0.385             0.359             0.324             0.320             0.341             0.321             0.312             0.294             0.329
+  month 11                                 0.383             0.382             0.351             0.374             0.379             0.369             0.353             0.356             0.326             0.233             0.229             0.302             0.308
+  month 12                                 0.377             0.370             0.304             0.372             0.372             0.362             0.340             0.352             0.249             0.257             0.257             0.259             0.243
