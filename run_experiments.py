@@ -28,7 +28,8 @@ NOTEBOOK = "02_train.ipynb"
 
 # The queue, one list per experiment (= folder under experiments/). Each entry changes some settings of the notebook's
 # first code cell. Order = what runs first; the numbers count across all experiments, for --only.
-# Settings you can change: MONTHLY_ONLY, ARCH, PRETRAINED, CONTEXT, AGREE, FILTER, YEARS, SEED, EPOCHS, BATCH, LR, QUANTIZE.
+# Settings you can change: MONTHLY_ONLY, ARCH, PRETRAINED, CONTEXT, AGREE, OVERSAMPLE, FILTER, YEARS, SEED, EPOCHS, BATCH,
+# LR, QUANTIZE.
 QUEUES = {
     "exp1_data": [                                # what the data does: sites vs years, label filter, radar filters
     dict(YEARS=(2024,), SEED=0),                  # 0  sites effect: 21 sites, 2024 only (about the same steps as the old runs)
@@ -53,6 +54,16 @@ QUEUES = {
     dict(PRETRAINED=True, QUANTIZE=False, SEED=1),                       # 15
     dict(ARCH="UnetPlusPlus", CONTEXT=True, QUANTIZE=False, SEED=1),     # 16
     dict(PRETRAINED=True, CONTEXT=True, QUANTIZE=False, SEED=1),         # 17
+    ],
+    # on top of context (the exp2 winner for water): cleaner labels x more rare-class windows, a 2x2 grid whose
+    # fourth corner (context alone) is hybrid_ctx from exp2
+    "exp3_agree_rare": [
+    dict(CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=0),                   # 18  context + cleaner labels
+    dict(CONTEXT=True, OVERSAMPLE=3, QUANTIZE=False, SEED=0),                 # 19  context + rare windows 3x
+    dict(CONTEXT=True, AGREE=True, OVERSAMPLE=3, QUANTIZE=False, SEED=0),     # 20  both
+    dict(CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=1),                   # 21
+    dict(CONTEXT=True, OVERSAMPLE=3, QUANTIZE=False, SEED=1),                 # 22
+    dict(CONTEXT=True, AGREE=True, OVERSAMPLE=3, QUANTIZE=False, SEED=1),     # 23
     ],
 }
 EXPERIMENTS = [dict(e, EXPERIMENT=x) for x, runs in QUEUES.items() for e in runs]
@@ -151,6 +162,7 @@ def rescore():
             if k in r and k + "_oldval" not in r:
                 r[k + "_oldval"] = r[k]                        # keep what the old validation set said
         r["val_miou"] = float(iou[cm.sum(1) > 0].mean())
+        r["val_iou"] = iou.tolist()
         r["val_water_iou"] = float(iou[0])
         r["val_water_precision"] = float(tp[0] / max(cm[:, 0].sum(), 1))
         json.dump(r, open(f, "w"))

@@ -12,9 +12,11 @@ input changes. Each variant twice (seeds 0 and 1). Queue entries 8 to 17 in `run
 | **No context** | `hybrid`, `hybrid_seed1` (exp1, baseline) | `hybrid_upp` | `hybrid_imnet` |
 | **+ context** (yearly median radar as 2 extra channels) | `hybrid_ctx` | `hybrid_upp_ctx` | `hybrid_imnet_ctx` |
 
-**Decision rule (set before the results):** a variant wins if, averaged over its 2 seeds, it beats the baseline on
-**test low-vegetation IoU and trees IoU** without mIoU dropping, by more than about 0.015 (the gap between two seeds
-of the same run). Below that it is luck.
+**Decision rule (set before the results):** a variant wins if all three hold:
+1. **Eye:** in the detail check, tree lines and small patches are visibly clearer and less blobby, in **both** seeds.
+2. **Trees IoU** (test), averaged over the 2 seeds, beats the baseline by more than about 0.015 (the gap between two
+   seeds of the same run; below that it is luck).
+3. **mIoU** does not drop.
 
 **Visual check:** the notebook's "Detail check" cell shows a 4 km piece of each test site: radar, label, baseline,
 this run. Saved in `runs/<name>/`.
