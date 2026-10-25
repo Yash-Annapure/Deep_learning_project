@@ -143,3 +143,44 @@ Cautions: Sentinel-2 is 10 m, not high definition; truly high-resolution imagery
 - What the model gets right: the reservoir chain, the forest/park in the north-east, and the airport strip.
 - Where it is wrong: it absorbs small green patches (parks, grass strips, scattered trees inside the city) into built and draws smooth blobs instead of fine detail. Likely causes: built radar returns (double bounce) dominate mixed 10 m pixels, speckle, and the model learned to smooth.
 - Report point: overall agreement is inflated by a dominant class, so per-class agreement is needed.
+
+## Copy-paste for rare classes: risks noted before building it (2026-10-25)
+
+- Shortcut learning: a pasted piece has an artificial border (sudden brightness jump, often a straight or rectangular edge). The model can learn "sharp artificial edge = rare class" instead of the class's own texture, then fire on real straight edges (roads, field borders).
+- Mismatches that also give the paste away: different orbit direction or incidence angle between the two sites (brightness level jump), different season (wet-season wetland pasted into a dry-season window), and with CONTEXT the yearly-median channels must be pasted too or the input disagrees with itself.
+- Mitigations: paste along the class's own label shape (not a rectangle), only between windows of the same month and pass direction, paste all channels including context, and apply it to a fraction of batches only.
+- WorldCover must not be used to place or label pasted pieces, or the independent check is no longer independent.
+
+## Idea: Sentinel-1 interferometric coherence (to discuss with the professor, 2026-10-25)
+
+- What: Sentinel-1 also records the phase of the radar wave. Comparing two passes 12 days apart gives coherence (0 to 1): stable surfaces such as buildings and bare rock stay high, vegetation and water fall low. Our GRD input (brightness only) does not contain it.
+- Why: it targets our built vs bare vs vegetation confusions directly, and it is still Sentinel-1, so it should fit "Sentinel-1 only" (to confirm with the professor).
+- What it would not fix: the blobby small patches in cities (coherence products are tens of metres per pixel), and flooded vegetation (a C-band limit; L-band, e.g. ALOS-2 or NISAR, sees water under canopy).
+- Sources: (1) process Sentinel-1 SLC data from the Copernicus Data Space with ESA SNAP (any date, finest pixels, very heavy); (2) ASF HyP3 on-demand processing (free with an Earthdata login, Python package, coarser pixels, monthly quota, queue time); (3) the global seasonal coherence dataset (Kellndorfer et al., AWS) - 2020 only, about 90 m, seasonal.
+- Deciding constraint: the prototype must fetch every model input for any place and any 12 months. A 2020 dataset cannot, and HyP3 would turn a 1-minute run into hours. A full pipeline would take most of the remaining time.
+- Plan agreed: a small proof of concept only - coherence for one site and a few months via HyP3, one figure showing how coherence and backscatter separate built, bare and vegetation. The report presents it as evidence plus future work.
+
+### Questions for the professor
+1. Does interferometric coherence count as "Sentinel-1 as the only input"?
+2. Is a one-site proof of concept enough for the report, with the full pipeline as future work?
+3. If an AGREE model (labels filtered with ESA WorldCover) becomes the prototype model, is switching the independent check to Esri's 10 m land cover map acceptable?
+
+## Brainstorm ideas (learner, 2026-10-25)
+
+- Biomes: tag each site with its biome (RESOLVE Ecoregions 2017 in Earth Engine) and report scores per biome; also use it to pick new sites so every biome is covered. Biome as a model input is risky with 21 training sites (2-4 per biome, shortcut learning); the CONTEXT channel already acts as a learned biome signal.
+- PCA: on 2 channels it only rotates them (about VV+VH = brightness, VH-VV = cross-pol ratio, a radar vegetation indicator; the first network layer can compute this itself). Useful across time instead: PCA of the 12 monthly values per pixel gives "mean brightness" and "seasonal swing", which separates crops from grass and scrub. Also a good false-colour figure for the report.
+
+## Review of the whole pipeline (2026-10-25)
+
+Fixed:
+- Test sites were used for decisions (exp1 filters and agreement filter, exp2 context): they are now a "development test". Fresh test sites, looked at only once at the end, go into the next export.
+- The exp1 baseline chose its best epoch on the old 4 validation sites, later runs on the current 10: baseline rerun queued (exp1_rerun) so every step uses the same validation set.
+- Pixels without radar: the export fills them with -999 (scaled to the darkest value, water-like). One training month (morogoro 2022-06) was 88% empty; overall 0.09% of training pixels. Training now ignores them; the prototype fills them the same way, gives them no class, and skips a month with more than 5% uncovered (a half-empty month would appear as large fake change).
+
+For the report (limits, not bugs):
+- Every score is agreement with Dynamic World, itself a model, not ground truth; Dynamic World and WorldCover agree on only about 60% of pixels, which caps any score.
+- Windows overlap (stride 128), so pixels inside a site count up to 4 times in the scores and printed pixel counts are inflated; comparisons between runs are unaffected.
+- Validation scores are slightly optimistic because the best epoch is chosen on validation.
+- The prototype picks the orbit direction among scenes with both VV and VH, the export among all IW scenes; almost always the same.
+
+Checked and fine: every validation/test site is at least 82 km from any training site; no NaN in the 1,152 radar files; AGREE does not change validation or test windows; the prototype's compositing, scaling and WorldCover mapping match the export; the rescore reproduces training-time scores exactly.

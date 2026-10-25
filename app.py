@@ -62,7 +62,8 @@ P.check(res)                                                     # shares add up
 st.pyplot(P.maps_figure(res))
 missing = [m for m, mp in zip(res["months"], res["maps"]) if mp is None]
 if missing:
-    st.warning(f"No radar in {', '.join(missing)}. Those months are left out, and changes are measured against the last month with data.")
+    st.warning(f"No full radar coverage in {', '.join(missing)}. Those months are left out, and changes are measured against "
+               "the last month with data (a partly covered month would show changes that never happened).")
 
 shares = pd.DataFrame(res["shares"], index=res["months"], columns=P.CLASSES)
 st.subheader("Share of the area per class over the 12 months (%)")

@@ -65,6 +65,12 @@ QUEUES = {
     dict(CONTEXT=True, OVERSAMPLE=3, QUANTIZE=False, SEED=1),                 # 22
     dict(CONTEXT=True, AGREE=True, OVERSAMPLE=3, QUANTIZE=False, SEED=1),     # 23
     ],
+    # the exp1 baseline again, now with its best epoch chosen on the current 10 validation sites (the original runs
+    # chose on the old 4), so every step of the comparison is measured with the same ruler
+    "exp1_rerun": [
+    dict(QUANTIZE=False, SEED=0),                                              # 24
+    dict(QUANTIZE=False, SEED=1),                                              # 25
+    ],
 }
 EXPERIMENTS = [dict(e, EXPERIMENT=x) for x, runs in QUEUES.items() for e in runs]
 

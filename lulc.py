@@ -22,6 +22,13 @@ REMAP[:8] = [0, 1, 2, 3, 4, 2, 5, 6]
 
 # dB ranges roughly matching the 1st to 99th percentile of the training sites; values outside are clipped
 VV_RANGE, VH_RANGE = (-25.0, 5.0), (-35.0, -5.0)
+NODATA_RADAR = -999.0   # what the export (and the prototype) put where a month has no radar for a pixel
+
+
+def missing(radar):
+    """(H, W): True where a pixel has no radar. Scaling would turn the fill into the darkest value (water-like), so
+    training ignores these pixels and the prototype gives them no class."""
+    return (radar <= NODATA_RADAR / 2).any(0)
 
 
 def scale_radar(radar):
@@ -120,6 +127,7 @@ class LULCDataset(Dataset):
                     radar_raw, label_raw, conf_raw = _read(f)
                     own = label_raw != IGNORE  # pixels where this month has its own label
                     label = REMAP[np.where(own, label_raw, fill)]
+                    label[missing(radar_raw)] = IGNORE  # no radar, nothing to learn from
                     h, w = label.shape
                     keep = [(r, c) for r in window_starts(h, patch, stride) for c in window_starts(w, patch, stride)
                             if (label[r:r + patch, c:c + patch] != IGNORE).mean() >= min_labelled]
@@ -169,6 +177,9 @@ if __name__ == "__main__":  # self-check: python lulc.py
               f"{np.mean([f.mean() for f in ds.filled]):.2f} of pixels filled from the yearly label")
     assert not (set(sets["train"].site) & set(sets["val"].site) | set(sets["train"].site) & set(sets["test"].site)
                 | set(sets["val"].site) & set(sets["test"].site)), "a site appears in two splits"
+    gap = np.full((2, 8, 8), -10.0, np.float32)  # pixels without radar are found, in either band
+    gap[0, 0, 0] = gap[1, 7, 7] = NODATA_RADAR
+    assert missing(gap).sum() == 2 and missing(gap)[0, 0] and missing(gap)[7, 7]
     probe = np.random.default_rng(0).normal(-10, 3, (2, 64, 64)).astype(np.float32)  # the filters: shape kept, grain reduced or boosted
     assert filter_radar(probe, None) is probe
     sm, sh = filter_radar(probe, "smooth"), filter_radar(probe, "sharpen")

@@ -17,7 +17,7 @@ import numpy as np
 import segmentation_models_pytorch as smp
 import torch
 
-from lulc import CLASSES, COLORS, REMAP, scale_radar
+from lulc import CLASSES, COLORS, NODATA_RADAR, REMAP, missing, scale_radar
 
 PROJECT = os.environ.get("EE_PROJECT", "deep-learning-project-512013")
 WEIGHTS = os.environ.get("MODEL_WEIGHTS", "experiments/exp1_data/weights/hybrid_seed1.pt")
@@ -98,12 +98,17 @@ def download(image, grid):
     return out
 
 
-def fetch_month(region, grid, pass_dir, year, month):
-    """Median of the month's Sentinel-1 scenes (VV, VH in dB), or None if there is no scene that month."""
+def fetch_month(region, grid, pass_dir, year, month, max_gap=0.05):
+    """Median of the month's Sentinel-1 scenes (VV, VH in dB), filled with NODATA_RADAR where no scene covers a pixel,
+    as in the training export. None if there is no scene, or if more than max_gap of the square is uncovered: a half-empty
+    month would show up as a large change that never happened."""
     start = ee.Date.fromYMD(year, month, 1)
     col = s1(region, start, start.advance(1, "month")).filter(ee.Filter.eq("orbitProperties_pass", pass_dir))
     n = col.size().getInfo()
-    return (download(col.select(["VV", "VH"]).median(), grid).astype("float32"), n) if n else (None, 0)
+    if not n:
+        return None, 0
+    radar = download(col.select(["VV", "VH"]).median().unmask(NODATA_RADAR), grid).astype("float32")
+    return (None if missing(radar).mean() > max_gap else radar), n
 
 
 def worldcover(grid):
@@ -116,12 +121,15 @@ def worldcover(grid):
 
 @torch.no_grad()
 def predict(model, radar_db):
-    """(2, H, W) radar in dB -> (H, W) class map. Scaled exactly like the training data, padded to a multiple of 32."""
+    """(2, H, W) radar in dB -> (H, W) class map. Scaled exactly like the training data, padded to a multiple of 32.
+    Pixels without radar get NO_DATA, so they never count in the shares."""
     h, w = radar_db.shape[1:]
     x = torch.from_numpy(scale_radar(radar_db))[None].to(device)
     x = torch.nn.functional.pad(x, (0, -w % 32, 0, -h % 32), mode="reflect")
     with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"):
-        return model(x).argmax(1)[0, :h, :w].cpu().numpy().astype(np.uint8)
+        out = model(x).argmax(1)[0, :h, :w].cpu().numpy().astype(np.uint8)
+    out[missing(radar_db)] = NO_DATA
+    return out
 
 
 def run(lat, lon, start, model, workers=6):
@@ -143,7 +151,8 @@ def run(lat, lon, start, model, workers=6):
     shares = np.full((12, C), np.nan)                              # % of the area per class, per month
     for i, mp in enumerate(maps):
         if mp is not None:
-            shares[i] = np.bincount(mp.ravel(), minlength=C)[:C] / mp.size * 100
+            ok = mp != NO_DATA                                     # pixels with radar
+            shares[i] = np.bincount(mp[ok], minlength=C)[:C] / ok.sum() * 100
     change = np.full((12, C), np.nan)                              # points of change against the previous month WITH data
     have = [i for i in range(12) if maps[i] is not None]
     if not have:
@@ -154,10 +163,11 @@ def run(lat, lon, start, model, workers=6):
 
     # independent check: the model's "typical" map (each pixel's most frequent class over the months) against WorldCover
     votes = np.stack([sum((maps[i] == c).astype(np.uint8) for i in have) for c in range(C)])
-    typical = votes.argmax(0).astype(np.uint8)
-    valid = wc != NO_DATA
+    typical = np.where(votes.sum(0) > 0, votes.argmax(0), NO_DATA).astype(np.uint8)   # NO_DATA: never had radar
+    has = typical != NO_DATA
+    valid = (wc != NO_DATA) & has
     wc_shares = np.bincount(wc[valid], minlength=C)[:C] / max(valid.sum(), 1) * 100
-    typical_shares = np.bincount(typical.ravel(), minlength=C)[:C] / typical.size * 100
+    typical_shares = np.bincount(typical[has], minlength=C)[:C] / max(has.sum(), 1) * 100
     agreement = float((typical[valid] == wc[valid]).mean()) if valid.any() else float("nan")
     return {"months": [f"{y}-{m:02d}" for y, m in months], "maps": maps, "shares": shares, "change": change,
             "total": total, "scenes": [n for _, n in fetched], "pass_dir": pass_dir, "lat": lat, "lon": lon,
@@ -173,9 +183,9 @@ def maps_figure(result):
     for a, month, mp, n in zip(ax.ravel(), result["months"], result["maps"], result["scenes"]):
         if mp is None:
             a.set_facecolor("lightgrey")
-            a.text(0.5, 0.5, "no radar\nthis month", ha="center", va="center", transform=a.transAxes)
+            a.text(0.5, 0.5, "no full radar\ncoverage this month", ha="center", va="center", transform=a.transAxes)
         else:
-            a.imshow(mp, cmap=cmap, vmin=-0.5, vmax=len(CLASSES) - 0.5, interpolation="nearest")
+            a.imshow(np.ma.masked_equal(mp, NO_DATA), cmap=cmap, vmin=-0.5, vmax=len(CLASSES) - 0.5, interpolation="nearest")
         a.set_box_aspect(1)                                    # every panel square, including "no radar" ones
         a.set_title(f"{month}  ({n} scenes)")
         a.set_xticks([]); a.set_yticks([])
@@ -192,9 +202,9 @@ def comparison_figure(result):
     fig, ax = plt.subplots(1, 3, figsize=(16, 5.8), layout="constrained")
     ax[0].imshow(np.ma.masked_equal(result["wc"], NO_DATA), cmap=cmap, vmin=-0.5, vmax=len(CLASSES) - 0.5, interpolation="nearest")
     ax[0].set_title("ESA WorldCover 2021 (independent)")
-    ax[1].imshow(result["typical"], cmap=cmap, vmin=-0.5, vmax=len(CLASSES) - 0.5, interpolation="nearest")
+    ax[1].imshow(np.ma.masked_equal(result["typical"], NO_DATA), cmap=cmap, vmin=-0.5, vmax=len(CLASSES) - 0.5, interpolation="nearest")
     ax[1].set_title("model: each pixel's most frequent class")
-    same = np.where(result["wc"] == NO_DATA, np.nan, (result["typical"] == result["wc"]).astype(float))
+    same = np.where((result["wc"] == NO_DATA) | (result["typical"] == NO_DATA), np.nan, (result["typical"] == result["wc"]).astype(float))
     ax[2].imshow(np.ma.masked_invalid(same), cmap="RdYlGn", vmin=0, vmax=1, interpolation="nearest")
     ax[2].set_title(f"agree (green) / disagree (red): {result['agreement']:.0%}")
     for a in ax:
@@ -208,7 +218,7 @@ def check(result):
     for i, mp in enumerate(result["maps"]):
         if mp is not None:
             assert abs(result["shares"][i].sum() - 100) < 1e-6, result["months"][i]
-            assert set(np.unique(mp)) <= set(range(len(CLASSES)))
+            assert set(np.unique(mp)) <= set(range(len(CLASSES))) | {NO_DATA}
     rows = ~np.isnan(result["change"]).any(axis=1)
     assert np.allclose(result["change"][rows].sum(axis=1), 0, atol=1e-6)
     if not np.isnan(result["total"]).any():
