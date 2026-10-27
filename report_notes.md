@@ -184,3 +184,9 @@ For the report (limits, not bugs):
 - The prototype picks the orbit direction among scenes with both VV and VH, the export among all IW scenes; almost always the same.
 
 Checked and fine: every validation/test site is at least 82 km from any training site; no NaN in the 1,152 radar files; AGREE does not change validation or test windows; the prototype's compositing, scaling and WorldCover mapping match the export; the rescore reproduces training-time scores exactly.
+
+## Professor feedback (2026-10-27)
+
+- Coherence: the main obstacle he saw was storage on the datalab server. Solution: a second server (the learner has access) with fast NVMe read-write storage, so data is downloaded straight onto it instead of laptop -> Drive -> server.
+- Dataset: grow from 34 to 50 sites and re-split.
+- Still to ask at the next lecture (2026-10-29): is a one-site coherence proof of concept enough; does the prototype also need coherence, or can coherence stay a research variant (a prototype run would need about 24 radar phase scenes, several GB each, processed on the fly); can the independent check switch to Esri.
