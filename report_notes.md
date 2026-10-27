@@ -190,3 +190,23 @@ Checked and fine: every validation/test site is at least 82 km from any training
 - Coherence: the main obstacle he saw was storage on the datalab server. Solution: a second server (the learner has access) with fast NVMe read-write storage, so data is downloaded straight onto it instead of laptop -> Drive -> server.
 - Dataset: grow from 34 to 50 sites and re-split.
 - Still to ask at the next lecture (2026-10-29): is a one-site coherence proof of concept enough; does the prototype also need coherence, or can coherence stay a research variant (a prototype run would need about 24 radar phase scenes, several GB each, processed on the fly); can the independent check switch to Esri.
+
+## Coherence proof of concept: Pakokku 2024 (2026-10-27)
+
+- 60 burst pairs (2 bursts, ascending, every 12 days, no gaps), ASF HyP3 INSAR_ISCE_BURST at 5x1 looks (about 20 m), 1 credit each (8,000 credits per month available). Aligned to the 10 m site grid, averaged per month.
+- Monthly mean coherence is seasonal: 0.62 (January, dry) down to 0.41 (September-October, rains), back to 0.57 in December. Growing vegetation and wet soil decorrelate between passes.
+- Single-feature separation (rank AUC, 0.5 = none, 1 = perfect), real monthly labels, all months: built vs trees VV 0.58 / VH 0.50 / coherence 0.83 (coherence wins by far); crops vs low vegetation 0.55 / 0.51 / 0.63; built vs bare 0.92 / 0.96 / 0.64 (brightness wins: dry bare ground and fallow fields are as stable as buildings); built vs low vegetation 0.81 / 0.80 / 0.57; bare vs low vegetation 0.74 / 0.85 / 0.56; water vs bare 0.87 / 0.74 / 0.85.
+- Added value: per-class Gaussian classifier, balanced accuracy over 7 classes, VV+VH 0.413 -> VV+VH+coherence 0.499 (+0.085). Same-site pixel split, so both numbers are optimistic; the difference is the signal.
+- Prediction vs result: coherence was expected to fix built vs bare; it does not. It fixes built vs trees, the confusion brightness cannot (trees and buildings are both bright, but leaves move between passes and walls do not). This relates to the blobby city maps (garden trees painted as built).
+- Limits: one site, one year; 20 m pixels; coherence itself swings with the seasons.
+- Next: confirm on a second, tree-rich humid site (Kisumu) before scaling up.
+
+## Coherence second site: Kisumu 2024 (2026-10-27)
+
+- Same notebook, only SITE changed. Every month fully covered, 4-6 maps per month.
+- Monthly mean coherence: lowest in March-April (0.49, long rains) and December (0.49), highest July-October (0.61-0.67). The seasonal swing is there again, but rain alone does not explain it: January-February, the driest months, sit in the middle (0.56, 0.53).
+- Separation (VV / VH / coherence): built vs trees 0.58 / 0.52 / 0.87 (replicates, slightly stronger than Pakokku's 0.83); water vs bare 0.61 / 0.76 / 0.93; built vs bare 0.91 / 0.93 / 0.55 (brightness wins again); crops vs low vegetation 0.58 / 0.55 / 0.54 (Pakokku's small coherence gain does not replicate); built vs low vegetation 0.77 / 0.70 / 0.74; bare vs low vegetation 0.82 / 0.86 / 0.68; crops vs bare 0.85 / 0.88 / 0.71.
+- Classifier, balanced accuracy over 7 classes: VV+VH 0.358 -> VV+VH+coherence 0.504 (+0.146), larger than Pakokku's +0.085.
+- Caveats: Kisumu has very little bare (13k pixels) and flooded vegetation (22k), so pairs with those classes are noisy here; same-site pixel split as before.
+- Observation, not yet checked: Dynamic World labels about 65% of the square as built, but coherence is high only in the dense centre; the outskirts (houses among gardens and trees) are much lower, which is why the built coherence box is so wide. Either Dynamic World's built is generous in peri-urban areas, or 20 m coherence blurs small houses into the trees around them. Check on satellite view.
+- Conclusion over both sites: built vs trees is the robust gain (0.83, 0.87); built vs bare stays a brightness job; crops vs low vegetation is not helped. Worth scaling up.
