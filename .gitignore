@@ -11,3 +11,4 @@ upload/
 queue.log
 prototype_runs/
 streamlit.log
+coherence_raw/
