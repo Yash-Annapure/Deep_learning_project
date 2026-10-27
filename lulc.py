@@ -79,7 +79,8 @@ def _read(f):
 
 
 class LULCDataset(Dataset):
-    """role is 'train', 'val' or 'test', taken from data/sites.csv, so a site is only ever in one split.
+    """role is 'train', 'val', 'test' or 'holdout' (the fresh test set, scored only in the final evaluation), taken
+    from data/sites.csv, so a site is only ever in one split.
 
     Label rule: the month's own label where it exists, otherwise the site's yearly label (filled = True).
     Confidence cutoffs and loss weights are not applied here; the training step does that.
