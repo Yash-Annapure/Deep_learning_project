@@ -2,6 +2,7 @@
 
     python coherence.py            # plan: pairs and credits per site-year, costs nothing
     python coherence.py --submit   # submit what is missing, then download, align and average as jobs finish
+    python coherence.py --collect  # one pass: download what has finished since, report what still waits, exit
     python coherence.py --check    # self-check of the pair and date logic, offline
 
 Safe to stop and rerun: jobs are found by name (never paid twice), finished site-years are skipped (a .done file
@@ -175,6 +176,21 @@ if __name__ == "__main__":
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(RAW_DIR, exist_ok=True)
     todo = [sy for sy in site_years() if not os.path.exists(done_file(*sy[:2]))]
+    if "--collect" in sys.argv:    # one pass over jobs already submitted: no search, no new jobs, no credits; then exit
+        hyp3 = hyp3_sdk.HyP3()
+        status = collections.Counter()
+        for sy in todo:
+            jobs = hyp3.find_jobs(name=job_name(*sy[:2]))
+            if not jobs:
+                continue               # never submitted (e.g. sites added later): left for a --submit run
+            try:
+                if finish(hyp3, *sy):
+                    continue
+            except Exception as e:
+                print(f"{sy[0]} {sy[1]}: {e!r}, retried next time", flush=True)
+            status.update(j.status_code for j in jobs)
+        print(f"{len(glob.glob(f'{OUT_DIR}/*.done'))} site-years done; jobs still waiting at HyP3: {dict(status)}")
+        sys.exit()
     with ThreadPoolExecutor(3) as pool:
         pairs = dict(zip(todo, pool.map(lambda sy: find_pairs(*sy), todo)))
     for sy, p in pairs.items():
