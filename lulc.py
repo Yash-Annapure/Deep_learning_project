@@ -136,6 +136,8 @@ class LULCDataset(Dataset):
                             ~own, keep)
 
                 files = sorted(glob.glob(f"{data_dir}/{site}_{year}-*.npz"))
+                if not files:  # a yearly label but no radar at all (wad_madani 2023-24: no Sentinel-1 over the site)
+                    continue
                 with ThreadPoolExecutor(max_workers=workers) as pool:  # one site-year at a time keeps memory small
                     months = list(pool.map(prepare, files))
                 for f, (radar, label, conf, filled, keep) in zip(files, months):
