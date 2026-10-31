@@ -1,0 +1,87 @@
+device: cuda NVIDIA RTX A6000
+{'train': 65712, 'val': 7006, 'test': 1764} patches
+65,712 windows, 13.4 GB of radar and labels kept on cuda
+7,006 windows, 1.4 GB of radar and labels kept on cuda
+1,764 windows, 0.4 GB of radar and labels kept on cuda
+oversampling off (OVERSAMPLE = 1)
+{'water': 1.33, 'trees': 0.84, 'low_vegetation': 0.8, 'flooded_vegetation': 1.46, 'crops': 0.71, 'built': 0.6, 'bare': 1.26}
+epoch  1/15  loss 0.895  val OA 0.474  val mIoU 0.302  (190s)
+epoch  2/15  loss 0.754  val OA 0.355  val mIoU 0.172  (177s)
+epoch  3/15  loss 0.701  val OA 0.427  val mIoU 0.275  (177s)
+epoch  4/15  loss 0.667  val OA 0.455  val mIoU 0.300  (177s)
+epoch  5/15  loss 0.644  val OA 0.531  val mIoU 0.350  (177s)
+epoch  6/15  loss 0.623  val OA 0.492  val mIoU 0.320  (177s)
+epoch  7/15  loss 0.605  val OA 0.520  val mIoU 0.363  (177s)
+epoch  8/15  loss 0.589  val OA 0.582  val mIoU 0.383  (177s)
+epoch  9/15  loss 0.577  val OA 0.615  val mIoU 0.422  (177s)
+epoch 10/15  loss 0.564  val OA 0.606  val mIoU 0.426  (177s)
+epoch 11/15  loss 0.555  val OA 0.616  val mIoU 0.435  (177s)
+epoch 12/15  loss 0.546  val OA 0.623  val mIoU 0.445  (177s)
+epoch 13/15  loss 0.539  val OA 0.619  val mIoU 0.438  (177s)
+epoch 14/15  loss 0.535  val OA 0.622  val mIoU 0.442  (176s)
+epoch 15/15  loss 0.533  val OA 0.624  val mIoU 0.442  (177s)
+[hybrid_ctx_agree_seed1] VALIDATION mIoU 0.445  water IoU 0.530  water precision 0.705
+
+[hybrid_ctx_agree_seed1] test OA 0.695  mIoU 0.390  over 70,010,439 labelled pixels
+
+class                   IoU     F1      pixels
+water                 0.646  0.785     759,350
+trees                 0.331  0.497   5,500,991
+low_vegetation        0.410  0.582  15,480,003
+flooded_vegetation    0.047  0.090      83,006
+crops                 0.281  0.439   8,511,496
+built                 0.822  0.902  33,015,911
+bare                  0.192  0.323   6,659,682
+
+month     OA   mIoU      pixels
+    1  0.593  0.349   9,633,300
+    2  0.641  0.382   9,633,772
+    3  0.650  0.384   9,633,772
+    4  0.731  0.413   9,633,792
+    5  0.759  0.407   6,422,528
+    6  0.816  0.362     932,500
+    7  0.000  0.000           0
+    8  0.000  0.000           0
+    9  0.325  0.172     255,741
+   10  0.849  0.380   4,598,578
+   11  0.710  0.366   9,633,600
+   12  0.729  0.376   9,632,856
+validation confusion matrix
+real-label pixels: 1,000,000  false-water pixels: 7,023 (0.7% of them)
+what the false water truly is: {'trees': 0.18, 'low_vegetation': 0.03, 'flooded_vegetation': 0.44, 'crops': 0.05, 'built': 0.26, 'bare': 0.04}
+VALIDATION (decide with these)        hybrid_ctx  hybrid_ctx_seed1  hybrid_ctx_agreehybrid_ctx_agree_seed1
+  mIoU                                     0.382             0.378             0.455             0.445
+  water IoU                                0.544             0.576             0.547             0.530
+  water precision                          0.783             0.816             0.751             0.705
+  IoU water                                0.544             0.576             0.547             0.530
+  IoU trees                                0.434             0.386             0.332             0.404
+  IoU low_vegetation                       0.303             0.363             0.394             0.349
+  IoU flooded_vegetation                   0.111             0.020             0.397             0.323
+  IoU crops                                0.314             0.294             0.357             0.352
+  IoU built                                0.804             0.781             0.791             0.780
+  IoU bare                                 0.164             0.226             0.364             0.378
+
+TEST (final exam)                     hybrid_ctx  hybrid_ctx_seed1  hybrid_ctx_agreehybrid_ctx_agree_seed1
+  OA                                       0.694             0.683             0.704             0.695
+  mIoU                                     0.364             0.369             0.400             0.390
+  IoU water                                0.618             0.750             0.709             0.646
+  IoU trees                                0.385             0.301             0.285             0.331
+  IoU low_vegetation                       0.425             0.411             0.445             0.410
+  IoU flooded_vegetation                   0.048             0.007             0.101             0.047
+  IoU crops                                0.200             0.109             0.232             0.281
+  IoU built                                0.819             0.793             0.827             0.822
+  IoU bare                                 0.051             0.215             0.202             0.192
+
+test mIoU by month                    hybrid_ctx  hybrid_ctx_seed1  hybrid_ctx_agreehybrid_ctx_agree_seed1
+  month 1                                  0.360             0.320             0.333             0.349
+  month 2                                  0.325             0.352             0.367             0.382
+  month 3                                  0.321             0.383             0.398             0.384
+  month 4                                  0.359             0.423             0.436             0.413
+  month 5                                  0.386             0.431             0.462             0.407
+  month 6                                  0.344             0.355             0.371             0.362
+  month 7                                  0.000             0.000             0.000             0.000
+  month 8                                  0.000             0.000             0.000             0.000
+  month 9                                  0.175             0.152             0.134             0.172
+  month 10                                 0.402             0.329             0.380             0.380
+  month 11                                 0.357             0.345             0.379             0.366
+  month 12                                 0.395             0.347             0.370             0.376
