@@ -71,6 +71,12 @@ QUEUES = {
     dict(QUANTIZE=False, SEED=0),                                              # 24
     dict(QUANTIZE=False, SEED=1),                                              # 25
     ],
+    # the exp3 winner (context + AGREE) again, now on all 50 sites (29 train, 12 val): the prototype's model, and the
+    # baseline that coherence must beat. Compare after --rescore, which scores the 34-site models on the same 12 val sites.
+    "exp4_50sites": [
+    dict(CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=0),                   # 26
+    dict(CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=1),                   # 27
+    ],
 }
 EXPERIMENTS = [dict(e, EXPERIMENT=x) for x, runs in QUEUES.items() for e in runs]
 
