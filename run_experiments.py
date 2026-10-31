@@ -225,7 +225,7 @@ def main():
         print(f"[{i}] {name}: started {time.strftime('%H:%M')}  {e}", flush=True)
         t = time.time()
         with open(f"{folder}/log.txt", "w") as log:
-            code = subprocess.run([sys.executable, __file__, "--one", repr(e)] + (["--smoke"] if smoke else []),
+            code = subprocess.run([sys.executable, "-u", __file__, "--one", repr(e)]   # -u: each log line appears at once + (["--smoke"] if smoke else []),
                                   stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, MPLBACKEND="Agg")).returncode
         ok = code == 0 and os.path.exists(results_file(name, out))
         print(f"[{i}] {name}: {'finished' if ok else f'FAILED (see {folder}/log.txt)'} in {(time.time() - t) / 60:.1f} min, "

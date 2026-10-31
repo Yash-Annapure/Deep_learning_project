@@ -5,6 +5,7 @@ pixel with the trained model, and shows the 12 maps, the share of each class per
 independent check against ESA WorldCover.
 """
 import datetime as dt
+import time
 
 import pandas as pd
 import streamlit as st
@@ -32,6 +33,39 @@ def table(df):
     st.dataframe(df.style.format("{:.1f}", na_rep="–"), width="stretch")
 
 
+LEGEND = " &nbsp; ".join(f"<span style='color:{c}; font-size:1.3em'>■</span> {n}" for c, n in zip(P.COLORS, P.CLASSES))
+
+
+@st.fragment
+def month_viewer(res):
+    """The 12 maps behind a slider. Only this part of the page reruns when the slider moves, so scrubbing stays quick."""
+    first = next(i for i, mp in enumerate(res["maps"]) if mp is not None)
+    left, right = st.columns([3, 2])
+    with right:
+        month = st.select_slider("Month", res["months"], value=res["months"][first])
+        show_change = st.toggle("Highlight pixels that changed since the previous month (magenta)")
+        play = st.button("▶ Play the 12 months")
+        i = res["months"].index(month)
+        share = P.changed_share(res, i)
+        st.metric("Pixels that changed class since the previous month", "–" if share != share else f"{share:.1f}%")
+        table(pd.DataFrame({"share (%)": res["shares"][i], "change (points)": res["change"][i]}, index=P.CLASSES))
+    with left:
+        spot = st.empty()
+        st.markdown(LEGEND, unsafe_allow_html=True)
+
+    def show(k):
+        img = P.month_image(res, k, show_change)
+        if img is None:
+            spot.info(f"{res['months'][k]}: no full radar coverage this month")
+        else:
+            spot.image(img, caption=f"{res['months'][k]}  ({res['scenes'][k]} scenes)", width="stretch")
+
+    for k in (range(12) if play else [i]):
+        show(k)
+        if play:
+            time.sleep(0.8)
+
+
 model = setup()
 today = dt.date.today()
 last_full = (today.year * 12 + today.month - 2)               # last complete month, counted in months since year 0
@@ -43,9 +77,12 @@ with st.sidebar.form("inputs"):
     month = st.selectbox("Start month", list(range(1, 13)), format_func=lambda m: dt.date(2000, m, 1).strftime("%B"))
     go = st.form_submit_button("Run")
 
-if not go:
+if go:                                                            # remembered, so moving the slider later keeps the results
+    st.session_state.last_run = (lat, lon, year, month)
+if "last_run" not in st.session_state:
     st.info("Pick a location and a start month on the left, then press Run. A run takes about a minute.")
     st.stop()
+lat, lon, year, month = st.session_state.last_run
 if year * 12 + month - 1 + 11 > last_full:
     st.error("The 12 months must already be over. Pick an earlier start month.")
     st.stop()
@@ -59,7 +96,9 @@ with st.spinner("Fetching 12 months of radar from Earth Engine and labelling the
         st.stop()
 P.check(res)                                                     # shares add up to 100, changes to 0
 
-st.pyplot(P.maps_figure(res))
+month_viewer(res)
+with st.expander("All 12 months at once"):
+    st.pyplot(P.maps_figure(res))
 missing = [m for m, mp in zip(res["months"], res["maps"]) if mp is None]
 if missing:
     st.warning(f"No full radar coverage in {', '.join(missing)}. Those months are left out, and changes are measured against "

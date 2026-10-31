@@ -174,6 +174,41 @@ def run(lat, lon, start, model, workers=6):
             "typical": typical, "wc": wc, "typical_shares": typical_shares, "wc_shares": wc_shares, "agreement": agreement}
 
 
+LUT = np.full((256, 3), 255, np.uint8)                  # class index -> RGB; NO_DATA (and anything else) white
+LUT[:len(COLORS)] = [[int(c[i:i + 2], 16) for i in (1, 3, 5)] for c in COLORS]
+
+
+def changed(result, i):
+    """(H, W) True where month i's class differs from the previous month with radar; None for months without radar and
+    for the first month with radar (nothing to compare with)."""
+    mp = result["maps"][i]
+    prev = next((result["maps"][j] for j in range(i - 1, -1, -1) if result["maps"][j] is not None), None)
+    if mp is None or prev is None:
+        return None
+    return (mp != prev) & (mp != NO_DATA) & (prev != NO_DATA)
+
+
+def changed_share(result, i):
+    """% of the square whose class changed since the previous month with radar (NaN if there is nothing to compare).
+    Larger than the change in class shares, which only counts the net flow: 1% trees -> crops plus 1% crops -> trees
+    is 2% of pixels changed but 0 points of change in either share."""
+    ch = changed(result, i)
+    return float("nan") if ch is None else float(ch.mean() * 100)
+
+
+def month_image(result, i, show_change=False):
+    """Month i as an RGB picture (H, W, 3) for the slider, or None if that month has no radar. show_change: pixels that
+    changed since the previous month with radar in magenta, everything else faded."""
+    mp = result["maps"][i]
+    if mp is None:
+        return None
+    img = LUT[mp]
+    ch = changed(result, i) if show_change else None
+    if ch is not None:
+        img = np.where(ch[..., None], np.array([255, 0, 255], np.uint8), (img * 0.3 + 255 * 0.7).astype(np.uint8))
+    return img
+
+
 def maps_figure(result):
     """The 12 maps in a 3 x 4 grid, with one colour per class and grey for months without radar."""
     import matplotlib.pyplot as plt
@@ -219,6 +254,8 @@ def check(result):
         if mp is not None:
             assert abs(result["shares"][i].sum() - 100) < 1e-6, result["months"][i]
             assert set(np.unique(mp)) <= set(range(len(CLASSES))) | {NO_DATA}
+            assert month_image(result, i, True).shape == mp.shape + (3,)
+            assert np.isnan(changed_share(result, i)) or 0 <= changed_share(result, i) <= 100
     rows = ~np.isnan(result["change"]).any(axis=1)
     assert np.allclose(result["change"][rows].sum(axis=1), 0, atol=1e-6)
     if not np.isnan(result["total"]).any():
