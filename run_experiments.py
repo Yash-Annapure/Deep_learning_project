@@ -165,16 +165,26 @@ def rescore():
         model = arch("resnet34", encoder_weights=None, in_channels=ds.channels, classes=C).to(device)
         model.load_state_dict(torch.load(w, map_location=device))
         model.eval()
-        cm = np.zeros((C, C), np.int64)
-        with torch.no_grad():
-            for x, y, _, filled in DataLoader(ds, batch_size=64):
-                with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"):
-                    pred = model(x.to(device)).argmax(1).cpu()
-                keep = (y != IGNORE) & ~filled                 # real monthly labels only, as in the notebook
-                cm += np.bincount((y[keep] * C + pred[keep]).numpy(), minlength=C * C).reshape(C, C)
-        tp = np.diag(cm).astype(float)
-        iou = tp / np.maximum(tp + (cm.sum(0) - tp) + (cm.sum(1) - tp), 1)
+
+        def confusion(no_coh=False):
+            cm = np.zeros((C, C), np.int64)
+            with torch.no_grad():
+                for x, y, _, filled in DataLoader(ds, batch_size=64):
+                    if no_coh:
+                        x[:, -2:] = 0                          # coherence and its flag empty, as in the prototype
+                    with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"):
+                        pred = model(x.to(device)).argmax(1).cpu()
+                    keep = (y != IGNORE) & ~filled             # real monthly labels only, as in the notebook
+                    cm += np.bincount((y[keep] * C + pred[keep]).numpy(), minlength=C * C).reshape(C, C)
+            tp = np.diag(cm).astype(float)
+            return cm, tp, tp / np.maximum(tp + (cm.sum(0) - tp) + (cm.sum(1) - tp), 1)
+
+        cm, tp, iou = confusion()
         r = json.load(open(f))
+        if coh:                                                # the same model where coherence can't be had (the prototype)
+            cm0, _, iou0 = confusion(no_coh=True)
+            r["val_miou_nocoh"], r["val_iou_nocoh"] = float(iou0[cm0.sum(1) > 0].mean()), iou0.tolist()
+            print(f"{name:34s} without coherence: val mIoU {r['val_miou_nocoh']:.3f}", flush=True)
         for k in ("val_miou", "val_water_iou", "val_water_precision"):
             if k in r and k + "_oldval" not in r:
                 r[k + "_oldval"] = r[k]                        # keep what the old validation set said

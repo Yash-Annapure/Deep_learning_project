@@ -17,7 +17,14 @@ on the 12 validation sites, against exp4 (mean of its 2 seeds):
 - validation mIoU is not lower (exp4: 0.450), and
 - no class drops by more than 0.05 validation IoU.
 
-Otherwise the prototype keeps the exp4 model and coherence is reported as a negative result. Stricter than exp4's rule
+Otherwise the prototype keeps the exp4 model and coherence is reported as a negative result.
+
+**Second measurement (also set before the results): the same exp5 models with coherence zeroed** (`val_miou_nocoh`
+from `--rescore`), which is what the prototype gets at a new location, where coherence can't be computed live.
+- If it is at least exp4's validation mIoU (0.450) with no class down more than 0.05, the prototype switches to the
+  exp5 model: training with coherence then also helped the radar-only predictions.
+- If not, the prototype keeps exp4, whatever the first rule says, and coherence's gain is reported as needing coherence
+  at prediction time. Stricter than exp4's rule
 because coherence makes the system more complex and the prototype cannot use it live, so it has to earn a clear gain
 where it was predicted.
 

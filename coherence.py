@@ -4,6 +4,7 @@
     python coherence.py --submit   # submit what is missing, then exit (no waiting on a paid server)
     python coherence.py --collect  # one pass: download, align and average what has finished, report what still waits, exit
     python coherence.py --check    # self-check of the pair and date logic, offline
+    python coherence.py --verify   # before training: coverage per role, alignment with the radar, mean per class
 
 Safe to stop and rerun: jobs are found by name (never paid twice), finished site-years are skipped (a .done file
 in data/coherence/), and each download is deleted as soon as it is aligned, so the disk only holds zips in flight.
@@ -175,9 +176,55 @@ def check():
     print("check OK")
 
 
+def verify():
+    """Before training with coherence: how much of each train/val/test site-month has coherence, whether it lines up
+    with the radar (the shift that best matches the two should be 0, 0), and its mean per class on validation."""
+    from lulc import CLASSES, REMAP, missing
+    roles = {r["name"]: r["role"] for r in csv.DictReader(open("data/sites.csv"))}
+    cover, shifts, per_class = collections.defaultdict(list), collections.Counter(), collections.defaultdict(list)
+    for site, role in roles.items():
+        if role == "holdout":
+            continue
+        best = None
+        for f in sorted(glob.glob(f"data/{site}_[0-9][0-9][0-9][0-9]-[0-9][0-9].npz")):
+            year = f[-11:-7]
+            if not os.path.exists(f"data/yearly/{site}_{year}.npz"):
+                continue                            # LULCDataset skips these months too
+            cf = f"{OUT_DIR}/{os.path.basename(f)}"
+            coh = np.load(cf)["coh"].astype(np.float32) if os.path.exists(cf) else np.full((SIZE_PX, SIZE_PX), np.nan)
+            assert np.nanmin(coh, initial=0) >= 0 and np.nanmax(coh, initial=0) <= 1.0001, cf
+            cover[role].append(np.isfinite(coh).mean())
+            cover[role, site].append(cover[role][-1])
+            if best is None or cover[role][-1] > best[0]:
+                best = (cover[role][-1], f, coh, year)
+        if best is None or best[0] < 0.5:
+            continue
+        _, f, coh, year = best                      # alignment on the site's best-covered month
+        vv = np.load(f)["radar"]
+        ok = np.isfinite(coh) & ~missing(vv)
+        inner = (slice(10, -10),) * 2               # away from the edges that np.roll wraps around
+        corr = {(dy, dx): abs(np.corrcoef(coh[inner][ok[inner]], np.roll(vv[0], (dy, dx), (0, 1))[inner][ok[inner]])[0, 1])
+                for dy in range(-3, 4) for dx in range(-3, 4)}
+        shifts[max(corr, key=corr.get)] += 1
+        if role == "val":
+            label = REMAP[np.load(f"data/yearly/{site}_{year}.npz")["label"]]
+            for c in range(len(CLASSES)):
+                per_class[c].append(coh[ok & (label == c)])
+    for role in ("train", "val", "test"):
+        sites = {k[1]: np.mean(v) for k, v in cover.items() if isinstance(k, tuple) and k[0] == role}
+        print(f"{role:5s}: {len(cover[role])} site-months, coherence on {np.mean(cover[role]):.0%} of their pixels; "
+              f"sites under 50%: {sorted(s for s, v in sites.items() if v < 0.5) or 'none'}")
+    print("best shift (rows, cols) between coherence and radar, count of sites:", dict(shifts.most_common()))
+    print("validation mean coherence per class:",
+          {c: round(float(np.concatenate(per_class[i]).mean()), 2) for i, c in enumerate(CLASSES) if per_class[i]})
+
+
 if __name__ == "__main__":
     if "--check" in sys.argv:
         check()
+        sys.exit()
+    if "--verify" in sys.argv:
+        verify()
         sys.exit()
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(RAW_DIR, exist_ok=True)

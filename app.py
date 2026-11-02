@@ -1,31 +1,45 @@
 """Streamlit page for the prototype:  uv run streamlit run app.py
 
-Enter a location and a start month; the page fetches 12 months of Sentinel-1 radar from Earth Engine, labels every
-pixel with the trained model, and shows the 12 maps, the share of each class per month, how it changed, and an
-independent check against ESA WorldCover.
+Pick a saved run (prototype_runs/*.pkl.gz, made by prototype.py or by an earlier live run) or enter a new location and
+a start month: the page then fetches 12 months of Sentinel-1 radar from Earth Engine and labels every pixel with the
+trained model. With OFFLINE=1 only saved runs are offered, so the page works on a laptop without Earth Engine or the
+model weights: edit this file and the browser updates on save.
 """
 import datetime as dt
+import glob
+import os
 import time
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
 import prototype as P
 
+LIVE = os.environ.get("OFFLINE") != "1"
 st.set_page_config(page_title="Sentinel-1 land cover over 12 months", layout="wide")
-st.title("Land cover from Sentinel-1 radar, month by month")
-st.caption("Radar sees through clouds, so this works in the rainy season too. Model: U-Net trained on 21 sites in Africa and Asia.")
 
 
 @st.cache_resource
-def setup():
+def model():
     P.init_ee()
     return P.load_model()
 
 
-@st.cache_data(show_spinner=False)
-def compute(lat, lon, start):
-    return P.run(lat, lon, start, model)
+@st.cache_resource
+def load(path):
+    return P.load(path)
+
+
+def compute(lat, lon, start, bar):
+    """A live run, saved like the demo runs, so asking again for the same place and months is instant."""
+    path = f"{P.RUNS}/{lat:.4f}_{lon:.4f}_{start}.pkl.gz"
+    if not os.path.exists(path):
+        res = P.run(lat, lon, start, model(), progress=lambda n: bar.progress(n / 12, f"{n} of 12 months of radar fetched"))
+        res["place"] = f"{lat:.4f}, {lon:.4f}"
+        os.makedirs(P.RUNS, exist_ok=True)
+        P.save(res, path)
+    return path
 
 
 def table(df):
@@ -33,7 +47,8 @@ def table(df):
     st.dataframe(df.style.format("{:.1f}", na_rep="–"), width="stretch")
 
 
-LEGEND = " &nbsp; ".join(f"<span style='color:{c}; font-size:1.3em'>■</span> {n}" for c, n in zip(P.COLORS, P.CLASSES))
+NAMES = [c.replace("_", " ") for c in P.CLASSES]
+LEGEND = " &nbsp; ".join(f"<span style='color:{c}; font-size:1.3em'>■</span> {n}" for c, n in zip(P.COLORS, NAMES))
 
 
 @st.fragment
@@ -48,7 +63,7 @@ def month_viewer(res):
         i = res["months"].index(month)
         share = P.changed_share(res, i)
         st.metric("Pixels that changed class since the previous month", "–" if share != share else f"{share:.1f}%")
-        table(pd.DataFrame({"share (%)": res["shares"][i], "change (points)": res["change"][i]}, index=P.CLASSES))
+        table(pd.DataFrame({"share (%)": res["shares"][i], "change (points)": res["change"][i]}, index=NAMES))
     with left:
         spot = st.empty()
         st.markdown(LEGEND, unsafe_allow_html=True)
@@ -66,61 +81,93 @@ def month_viewer(res):
             time.sleep(0.8)
 
 
-model = setup()
-today = dt.date.today()
-last_full = (today.year * 12 + today.month - 2)               # last complete month, counted in months since year 0
-with st.sidebar.form("inputs"):
-    st.header("Location and time")
-    lat = st.number_input("Latitude", -60.0, 75.0, -0.0917, format="%.4f")
-    lon = st.number_input("Longitude", -180.0, 180.0, 34.7680, format="%.4f")
-    year = st.selectbox("Start year", list(range(2017, today.year + 1)), index=2024 - 2017)
-    month = st.selectbox("Start month", list(range(1, 13)), format_func=lambda m: dt.date(2000, m, 1).strftime("%B"))
-    go = st.form_submit_button("Run")
-
-if go:                                                            # remembered, so moving the slider later keeps the results
-    st.session_state.last_run = (lat, lon, year, month)
-if "last_run" not in st.session_state:
-    st.info("Pick a location and a start month on the left, then press Run. A run takes about a minute.")
+# ---- where the result comes from: a saved run, or a new location fetched live ----
+saved = sorted(glob.glob(f"{P.RUNS}/*.pkl.gz"))
+choices = (["Saved run"] if saved else []) + (["New location"] if LIVE else [])
+if not choices:
+    st.error(f"No saved runs in {P.RUNS}/ and OFFLINE=1: copy some .pkl.gz files there first.")
     st.stop()
-lat, lon, year, month = st.session_state.last_run
-if year * 12 + month - 1 + 11 > last_full:
-    st.error("The 12 months must already be over. Pick an earlier start month.")
-    st.stop()
-
-start = f"{year}-{month:02d}"
-with st.spinner("Fetching 12 months of radar from Earth Engine and labelling them..."):
+mode = st.sidebar.radio("Show", choices)
+if mode == "Saved run":
+    path = st.sidebar.selectbox("Place", saved, format_func=lambda p: load(p).get("place", os.path.basename(p)))
+else:
+    today = dt.date.today()
+    last_full = today.year * 12 + today.month - 2                 # last complete month, counted in months since year 0
+    default = last_full - 11                                      # the most recent 12 complete months: the best coverage
+    with st.sidebar.form("inputs"):
+        lat = st.number_input("Latitude", -60.0, 75.0, -0.0917, format="%.4f")
+        lon = st.number_input("Longitude", -180.0, 180.0, 34.7680, format="%.4f")
+        years = list(range(2017, today.year + 1))
+        year = st.selectbox("Start year", years, index=years.index(default // 12))
+        month = st.selectbox("Start month", list(range(1, 13)), index=default % 12,
+                             format_func=lambda m: dt.date(2000, m, 1).strftime("%B"))
+        go = st.form_submit_button("Run")
+    if go:                                                        # remembered, so touching anything later keeps the results
+        st.session_state.last_run = (lat, lon, year, month)
+    if "last_run" not in st.session_state:
+        st.title("Land cover from Sentinel-1 radar, month by month")
+        st.info("Enter a location and a start month on the left, then press Run. A new place takes about a minute.")
+        st.stop()
+    lat, lon, year, month = st.session_state.last_run
+    if year * 12 + month - 1 + 11 > last_full:
+        st.error("The 12 months must already be over. Pick an earlier start month.")
+        st.stop()
+    bar = st.progress(0.0, "Fetching 12 months of radar from Earth Engine...")
     try:
-        res = compute(round(lat, 4), round(lon, 4), start)
+        path = compute(round(lat, 4), round(lon, 4), f"{year}-{month:02d}", bar)
     except ValueError as e:
         st.error(str(e))
         st.stop()
-P.check(res)                                                     # shares add up to 100, changes to 0
+    bar.empty()
 
-month_viewer(res)
-with st.expander("All 12 months at once"):
-    st.pyplot(P.maps_figure(res))
+res = load(path)
+P.check(res)                                                      # shares add up to 100, changes to 0
+have = [i for i, mp in enumerate(res["maps"]) if mp is not None]
+
+# ---- the answer first: what changed, then the months to look at ----
+st.title(res.get("place", f"{res['lat']:.4f}, {res['lon']:.4f}"))
+st.caption(f"{res['lat']:.4f}, {res['lon']:.4f} · 10 km × 10 km · {res['months'][0]} to {res['months'][-1]} · "
+           f"Sentinel-1 radar only, U-Net trained on 50 sites in Africa and Asia")
+cols = st.columns(4)
+for col, (c, pts) in zip(cols, P.biggest_changes(res)):
+    i = P.CLASSES.index(c)
+    col.metric(NAMES[i], f"{res['shares'][have[-1]][i]:.1f}% of the area",
+               f"{pts:+.1f} points since {res['months'][have[0]]}", delta_color="off")
+cols[3].metric("Months with radar", f"{len(have)} of 12")
 missing = [m for m, mp in zip(res["months"], res["maps"]) if mp is None]
 if missing:
     st.warning(f"No full radar coverage in {', '.join(missing)}. Those months are left out, and changes are measured against "
                "the last month with data (a partly covered month would show changes that never happened).")
 
-shares = pd.DataFrame(res["shares"], index=res["months"], columns=P.CLASSES)
-st.subheader("Share of the area per class over the 12 months (%)")
-st.line_chart(shares.dropna(), color=P.COLORS)                   # months without radar are skipped, not drawn as gaps
-table(shares)
+month_viewer(res)
 
-st.subheader("Change from the previous month (percentage points)")
-table(pd.DataFrame(res["change"], index=res["months"], columns=P.CLASSES))
-st.subheader(f"Total change, {res['months'][0]} to {res['months'][-1]} (percentage points)")
-table(pd.DataFrame([res["total"]], columns=P.CLASSES, index=["total"]))
-st.caption(f"{res['pass_dir'].capitalize()} passes, scenes per month: {res['scenes']}. Changes include classification "
-           "errors and seasonal effects (for example wet versus dry season), not only real land-use change.")
-
-st.header("Independent check: ESA WorldCover 2021")
-st.pyplot(P.comparison_figure(res))
-st.metric("Pixels where the model's typical map agrees with WorldCover", f"{res['agreement']:.0%}")
-table(pd.DataFrame([res["typical_shares"], res["wc_shares"]], columns=P.CLASSES,
-                   index=["model (each pixel's most frequent class)", "ESA WorldCover 2021"]))
-st.caption("WorldCover was not used to train this model, so it is an independent second opinion, not the truth: it is from "
-           "2021 (the land may have changed since), it uses its own class definitions, and it is partly made from Sentinel-1 too. "
-           "For reference, Dynamic World (the training labels) and WorldCover agree on only about 60% of pixels at our sites.")
+trends, opinion, grid = st.tabs(["Trends", "Second opinion: ESA WorldCover", "All 12 months"])
+with trends:
+    shares = pd.DataFrame(res["shares"], index=res["months"], columns=NAMES)
+    st.subheader("Share of the area per class (%)")
+    st.line_chart(shares.dropna(), color=P.COLORS)               # months without radar are skipped, not drawn as gaps
+    table(shares)
+    st.subheader("Change from the previous month (percentage points)")
+    table(pd.DataFrame(res["change"], index=res["months"], columns=NAMES))
+    st.subheader(f"Total change, {res['months'][have[0]]} to {res['months'][have[-1]]} (percentage points)")
+    table(pd.DataFrame([res["total"]], columns=NAMES, index=["total"]))
+    st.caption(f"{res['pass_dir'].capitalize()} passes, scenes per month: {res['scenes']}. Changes include classification "
+               "errors and seasonal effects (for example wet versus dry season), not only real land-use change.")
+with opinion:
+    same = np.where((res["wc"] == P.NO_DATA) | (res["typical"] == P.NO_DATA), 2, res["typical"] != res["wc"])
+    a, b, c = st.columns(3)
+    a.image(P.LUT[res["wc"]], caption="ESA WorldCover 2021", width="stretch")
+    b.image(P.LUT[res["typical"]], caption="model: each pixel's most frequent class", width="stretch")
+    c.image(np.array([[60, 170, 90], [215, 60, 50], [255, 255, 255]], np.uint8)[same],
+            caption=f"agree (green) / disagree (red): {res['agreement']:.0%}", width="stretch")
+    st.markdown(LEGEND, unsafe_allow_html=True)
+    table(pd.DataFrame([res["typical_shares"], res["wc_shares"]], columns=NAMES,
+                       index=["model (each pixel's most frequent class)", "ESA WorldCover 2021"]))
+    st.caption("A second opinion, not the truth: WorldCover is from 2021 (the land may have changed since), uses its own class "
+               "definitions, is partly made from Sentinel-1 too, and filtered this model's training labels (it was never "
+               "learned from directly). Dynamic World (the training labels) and WorldCover agree on only about 60% of pixels at our sites.")
+with grid:
+    blank = np.full((250, 250, 3), 230, np.uint8)                 # months without radar: grey
+    imgs = [blank if res["maps"][k] is None else P.month_image(res, k)[::4, ::4] for k in range(12)]
+    st.image(imgs, caption=res["months"], width=220)
+    st.markdown(LEGEND, unsafe_allow_html=True)
