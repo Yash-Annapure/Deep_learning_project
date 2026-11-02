@@ -28,7 +28,9 @@ def model():
 
 @st.cache_resource
 def load(path):
-    return P.load(path)
+    res = P.load(path)
+    res.update(P.second_opinion(res["maps"], res["wc"]))    # runs saved before a rule change get the current comparison
+    return res
 
 
 def compute(lat, lon, start, bar):
@@ -141,7 +143,7 @@ if missing:
 
 month_viewer(res)
 
-trends, opinion, grid = st.tabs(["Trends", "Second opinion: ESA WorldCover", "All 12 months"])
+trends, opinion, grid = st.tabs(["Trends", "Compared with other maps", "All 12 months"])
 with trends:
     shares = pd.DataFrame(res["shares"], index=res["months"], columns=NAMES)
     st.subheader("Share of the area per class (%)")
@@ -154,18 +156,26 @@ with trends:
     st.caption(f"{res['pass_dir'].capitalize()} passes, scenes per month: {res['scenes']}. Changes include classification "
                "errors and seasonal effects (for example wet versus dry season), not only real land-use change.")
 with opinion:
-    same = np.where((res["wc"] == P.NO_DATA) | (res["typical"] == P.NO_DATA), 2, res["typical"] != res["wc"])
+    dw = res.get("dw")                                            # runs saved before Dynamic World was added have none
     a, b, c = st.columns(3)
-    a.image(P.LUT[res["wc"]], caption="ESA WorldCover 2021", width="stretch")
-    b.image(P.LUT[res["typical"]], caption="model: each pixel's most frequent class", width="stretch")
-    c.image(np.array([[60, 170, 90], [215, 60, 50], [255, 255, 255]], np.uint8)[same],
-            caption=f"agree (green) / disagree (red): {res['agreement']:.0%}", width="stretch")
+    a.image(P.LUT[res["typical"]], caption="this model (radar only)", width="stretch")
+    if dw is None:
+        b.info("Dynamic World: not in this saved run (run the place again to get it)")
+    else:
+        b.image(P.LUT[dw], caption="Dynamic World, same 12 months (optical, the model's teacher)", width="stretch")
+    c.image(P.LUT[res["wc"]], caption="ESA WorldCover 2021 (optical + radar)", width="stretch")
     st.markdown(LEGEND, unsafe_allow_html=True)
-    table(pd.DataFrame([res["typical_shares"], res["wc_shares"]], columns=NAMES,
-                       index=["model (each pixel's most frequent class)", "ESA WorldCover 2021"]))
-    st.caption("A second opinion, not the truth: WorldCover is from 2021 (the land may have changed since), uses its own class "
-               "definitions, is partly made from Sentinel-1 too, and filtered this model's training labels (it was never "
-               "learned from directly). Dynamic World (the training labels) and WorldCover agree on only about 60% of pixels at our sites.")
+    m1, m2, m3 = st.columns(3)
+    if dw is not None:
+        m1.metric("Model vs Dynamic World", f"{P.agreement(res['typical'], dw):.0%}", help="how well the model learned from its teacher")
+        m3.metric("Dynamic World vs WorldCover", f"{P.agreement(dw, res['wc']):.0%}", help="how much the two optical maps agree with each other")
+    m2.metric("Model vs WorldCover", f"{res['agreement']:.0%}")
+    st.caption(f"Pixels that agree, out of those both maps classify. Each map over the year: the most frequent class, but crops "
+               f"if crops in {P.CROP_MONTHS} or more months (WorldCover's definition of cropland: planted at least once a year; "
+               "a plain majority would call most fields bare or low vegetation, because they carry a crop only part of the year). "
+               "None of the three is the truth: the model learned from Dynamic World, so it can at best match Dynamic World; "
+               "WorldCover is from 2021, uses its own class definitions (trees from 10% canopy, for example) and filtered this "
+               "model's training labels. Where Dynamic World and WorldCover disagree, the model cannot satisfy both.")
 with grid:
     blank = np.full((250, 250, 3), 230, np.uint8)                 # months without radar: grey
     imgs = [blank if res["maps"][k] is None else P.month_image(res, k)[::4, ::4] for k in range(12)]

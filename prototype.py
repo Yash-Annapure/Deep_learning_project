@@ -31,7 +31,7 @@ RUNS = "prototype_runs"
 # ponytail: coordinates picked from maps, check each square on satellite view before recording
 DEMOS = {
     "Lake Debo, Mali: Niger flood plain": (15.30, -4.15),
-    "Tonle Sap, Cambodia: seasonal lake": (12.95, 104.00),
+    "Tonle Sap, Cambodia: seasonal lake": (13.15, 104.10),     # north shore: 12.95, 104.00 was open lake, 100% water all year
     "Satkhira, Bangladesh: shrimp ponds": (22.55, 89.10),
     "Gezira, Sudan: irrigated crops": (14.50, 33.20),
     "Bagre reservoir, Burkina Faso": (11.48, -0.55),
@@ -136,6 +136,18 @@ def worldcover(grid):
     return REMAP[download(img, grid)[0].astype(np.uint8)]
 
 
+def dynamic_world(region, grid, year, month):
+    """Dynamic World (the training labels) for the same 12 months: each month's most frequent label, in our classes;
+    None for a month without any (Dynamic World is made from optical images, so a cloudy month can have none)."""
+    dw = ee.ImageCollection("GOOGLE/DYNAMICWORLD/V1").filterBounds(region).select("label")
+    empty = ee.ImageCollection([ee.Image.constant(0).rename("label").toByte().selfMask()])   # fully masked: keeps an empty month's mode() valid
+    start = ee.Date.fromYMD(year, month, 1)
+    img = ee.Image.cat([dw.filterDate(start.advance(i, "month"), start.advance(i + 1, "month")).merge(empty).mode()
+                        .unmask(NO_DATA).toByte().rename(f"m{i}") for i in range(12)])
+    maps = REMAP[download(img, grid).astype(np.uint8)]                 # shrub -> low vegetation, 255 stays no data
+    return [mp if (mp != NO_DATA).any() else None for mp in maps]
+
+
 @torch.no_grad()
 def predict(model, radar_db, context):
     """(2, H, W) radar in dB + (2, H, W) scaled context -> (H, W) class map. Scaled exactly like the training data,
@@ -149,7 +161,7 @@ def predict(model, radar_db, context):
     return out
 
 
-def run(lat, lon, start, model, workers=13, progress=lambda done: None):
+def run(lat, lon, start, model, workers=14, progress=lambda done: None):
     """The whole prototype: 12 maps, % per class each month, month-to-month change and first-to-last change (in points).
     progress(n) is called as each of the 12 months arrives."""
     months = months_from(start)
@@ -160,12 +172,12 @@ def run(lat, lon, start, model, workers=13, progress=lambda done: None):
     if pass_dir is None:
         raise ValueError("no Sentinel-1 scenes at this location in these 12 months")
     with ThreadPoolExecutor(max_workers=workers) as pool:          # the 12 months (and WorldCover) are fetched at the same time
-        wc_job = pool.submit(worldcover, grid)
+        wc_job, dw_job = pool.submit(worldcover, grid), pool.submit(dynamic_world, region, grid, y0, m0)
         jobs = [pool.submit(fetch_month, region, grid, pass_dir, *ym) for ym in months]
         for n, _ in enumerate(as_completed(jobs), 1):
             progress(n)
         fetched = [j.result() for j in jobs]
-        wc = wc_job.result()
+        wc, dw = wc_job.result(), year_map(dw_job.result())
     radars = [r for r, _ in fetched if r is not None]
     if not radars:
         raise ValueError("none of the 12 months has radar at this location")
@@ -185,17 +197,43 @@ def run(lat, lon, start, model, workers=13, progress=lambda done: None):
         change[cur] = shares[cur] - shares[prev]
     total = shares[have[-1]] - shares[have[0]] if len(have) >= 2 else np.full(C, np.nan)
 
-    # independent check: the model's "typical" map (each pixel's most frequent class over the months) against WorldCover
-    votes = np.stack([sum((maps[i] == c).astype(np.uint8) for i in have) for c in range(C)])
-    typical = np.where(votes.sum(0) > 0, votes.argmax(0), NO_DATA).astype(np.uint8)   # NO_DATA: never had radar
-    has = typical != NO_DATA
-    valid = (wc != NO_DATA) & has
-    wc_shares = np.bincount(wc[valid], minlength=C)[:C] / max(valid.sum(), 1) * 100
-    typical_shares = np.bincount(typical[has], minlength=C)[:C] / max(has.sum(), 1) * 100
-    agreement = float((typical[valid] == wc[valid]).mean()) if valid.any() else float("nan")
     return {"months": [f"{y}-{m:02d}" for y, m in months], "maps": maps, "shares": shares, "change": change,
             "total": total, "scenes": [n for _, n in fetched], "pass_dir": pass_dir, "lat": lat, "lon": lon,
-            "typical": typical, "wc": wc, "typical_shares": typical_shares, "wc_shares": wc_shares, "agreement": agreement}
+            "wc": wc, "dw": dw, **second_opinion(maps, wc)}
+
+
+CROP_MONTHS = 3   # crops in at least this many months = cropland, WorldCover's definition (planted at least once a year)
+
+
+def year_map(maps):
+    """One map for the whole year from monthly maps: each pixel's most frequent class, except that a pixel that is crops
+    in CROP_MONTHS or more months is crops (fields carry a crop only part of the year, so a majority vote would call most
+    of them bare or low vegetation). NO_DATA where no month has a class; None if no month has a map."""
+    have = [mp for mp in maps if mp is not None]
+    if not have:
+        return None
+    votes = np.stack([sum((mp == c).astype(np.uint8) for mp in have) for c in range(len(CLASSES))])
+    out = np.where(votes.sum(0) > 0, votes.argmax(0), NO_DATA).astype(np.uint8)
+    out[votes[CLASSES.index("crops")] >= CROP_MONTHS] = CLASSES.index("crops")
+    return out
+
+
+def agreement(a, b):
+    """Share of pixels where two maps give the same class, over the pixels where both have one."""
+    ok = (a != NO_DATA) & (b != NO_DATA)
+    return float((a[ok] == b[ok]).mean()) if ok.any() else float("nan")
+
+
+def second_opinion(maps, wc):
+    """The model's map for the whole year (year_map) next to WorldCover."""
+    C = len(CLASSES)
+    typical = year_map(maps)
+    has = typical != NO_DATA
+    valid = (wc != NO_DATA) & has
+    return {"typical": typical,
+            "typical_shares": np.bincount(typical[has], minlength=C)[:C] / max(has.sum(), 1) * 100,
+            "wc_shares": np.bincount(wc[valid], minlength=C)[:C] / max(valid.sum(), 1) * 100,
+            "agreement": agreement(typical, wc)}
 
 
 def save(result, path):
@@ -306,6 +344,9 @@ def check(result):
     assert np.isnan(result["agreement"]) or 0 <= result["agreement"] <= 1
     big = biggest_changes(result)
     assert all(abs(a[1]) >= abs(b[1]) for a, b in zip(big, big[1:]))
+    crop, grass = (np.full((2, 2), CLASSES.index(c), np.uint8) for c in ("crops", "low_vegetation"))
+    assert second_opinion([crop] * CROP_MONTHS + [grass] * 9, grass)["typical"][0, 0] == CLASSES.index("crops")
+    assert second_opinion([crop] * (CROP_MONTHS - 1) + [grass] * 9, grass)["typical"][0, 0] == CLASSES.index("low_vegetation")
 
 
 def run_and_save(lat, lon, start, model, place=None):
