@@ -1,8 +1,8 @@
 """Coherence for every site-year, from ASF HyP3: the batch version of 04_coherence_poc.ipynb.
 
     python coherence.py            # plan: pairs and credits per site-year, costs nothing
-    python coherence.py --submit   # submit what is missing, then download, align and average as jobs finish
-    python coherence.py --collect  # one pass: download what has finished since, report what still waits, exit
+    python coherence.py --submit   # submit what is missing, then exit (no waiting on a paid server)
+    python coherence.py --collect  # one pass: download, align and average what has finished, report what still waits, exit
     python coherence.py --check    # self-check of the pair and date logic, offline
 
 Safe to stop and rerun: jobs are found by name (never paid twice), finished site-years are skipped (a .done file
@@ -114,8 +114,14 @@ def coherence_on_grid(zip_path, crs, affine):
     return out
 
 
+# site-years whose jobs from 2026-10-27 stayed PENDING at HyP3 while newer jobs finished: submitted again under a new
+# name, so the stuck jobs neither block finish() nor count as already submitted
+RESUBMITTED = ({(s, y) for s in ("khon_kaen_rural", "adama_rural") for y in range(2022, 2026)} | {("pakokku_rural", 2025)}
+               | {(s, 2024) for s in ("maradi", "maradi_rural", "gaborone", "gaborone_rural", "anantapur", "anantapur_rural")})
+
+
 def job_name(site, year):
-    return f"coh_{site}_{year}"
+    return f"coh_{site}_{year}" + ("_r2" if (site, year) in RESUBMITTED else "")
 
 
 def done_file(site, year):
@@ -212,19 +218,4 @@ if __name__ == "__main__":
         jobs = [hyp3_sdk.HyP3.prepare_insar_isce_burst_job(s1, s2, name=job_name(*sy[:2]), looks=LOOKS) for s1, s2 in p]
         for i in range(0, len(jobs), 200):    # ponytail: 200 per request to stay under the API's batch limit, unverified
             hyp3.submit_prepared_jobs(jobs[i:i + 200])
-    print("submitted; now collecting results as site-years finish (checks every 10 minutes)", flush=True)
-    while todo:
-        hyp3 = hyp3_sdk.HyP3()    # a fresh login each round, so a run of a day or two does not outlive its session
-        still = []
-        for sy in todo:
-            try:
-                finished = finish(hyp3, *sy)
-            except Exception as e:     # one bad download or a network hiccup must not stop the other site-years
-                print(f"{sy[0]} {sy[1]}: {e!r}, retried next round", flush=True)
-                finished = False
-            if not finished:
-                still.append(sy)
-        todo = still
-        print(f"{time.strftime('%Y-%m-%d %H:%M')} UTC: {len(pairs) - len(todo)} of {len(pairs)} site-years done", flush=True)
-        if todo:
-            time.sleep(600)
+    print("submitted; collect the results later with --collect", flush=True)

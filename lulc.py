@@ -5,6 +5,7 @@ and a flag saying whether the label came from the yearly map (filled) instead of
 """
 import csv
 import glob
+import os
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -97,16 +98,20 @@ class LULCDataset(Dataset):
 
     filter=None, 'smooth' or 'sharpen' applies filter_radar to the radar before it is scaled (see there).
 
+    coherence=True adds two more channels (after context): the month's InSAR coherence (data/coherence/, made by
+    coherence.py; 0 where there is none) and a flag, 1 where the coherence is real. Without the flag a missing value
+    would read as 0 = "changed completely" (water); with it the model can tell "no coherence" from "low coherence".
+
     quantize=True stores radar and confidence as 8-bit numbers (0 to 255 instead of 0 to 1), half the memory of the
     default 16-bit. The step is 1/255 of the range (about 0.12 dB for VV), far below the speckle noise. Windows are
     converted back to 0..1 floats when they are read, so users of the dataset see the same thing either way.
     """
 
     def __init__(self, role, data_dir="data", years=None, patch=256, stride=128, min_labelled=0.05, context=False,
-                 agree=False, quantize=False, workers=8, filter=None):
+                 agree=False, quantize=False, workers=8, filter=None, coherence=False):
         roles = {r["name"]: r["role"] for r in csv.DictReader(open(f"{data_dir}/sites.csv"))}
         self.patch = patch
-        self.channels = 2 + 2 * context
+        self.channels = 2 + 2 * context + 2 * coherence
         self.quantize = quantize
         store = (lambda a: np.round(a * 255).astype(np.uint8)) if quantize else (lambda a: a.astype(np.float16))
         self.radar, self.label, self.conf, self.filled, self.site, self.month, self.year = [], [], [], [], [], [], []
@@ -155,6 +160,12 @@ class LULCDataset(Dataset):
                     med = np.round(med).astype(np.uint8) if quantize else med.astype(np.float16)
                     for k in range(first, len(self.radar)):
                         self.radar[k] = np.concatenate([self.radar[k], med])
+                if coherence:  # same file name as the month's radar file, in data/coherence/
+                    for k, f in zip(range(first, len(self.radar)), files):
+                        cf = f"{data_dir}/coherence/{os.path.basename(f)}"
+                        coh = np.load(cf)["coh"].astype(np.float32) if os.path.exists(cf) else np.full(self.label[k].shape, np.nan, np.float32)
+                        have = np.isfinite(coh)
+                        self.radar[k] = np.concatenate([self.radar[k], store(np.stack([np.clip(np.nan_to_num(coh), 0, 1), have]))])
 
     def __len__(self):
         return len(self.items)
@@ -198,6 +209,12 @@ if __name__ == "__main__":  # self-check: python lulc.py
     assert ctx.channels == 4 and ctx[0][0].shape == (4, 256, 256) and 0 <= ctx[0][0].min() and ctx[0][0].max() <= 1
     first_month = next(i for i in range(1, len(ctx.site)) if ctx.site[i] == ctx.site[0])
     assert np.array_equal(ctx.radar[0][2:], ctx.radar[first_month][2:]) and not np.array_equal(ctx.radar[0][:2], ctx.radar[first_month][:2])
+    coh = LULCDataset("val", context=True, coherence=True)  # coherence + flag: 6 channels, coherence 0 wherever the flag says none
+    assert coh.channels == 6 and coh[0][0].shape == (6, 256, 256)
+    for r, c in zip(coh.radar, ctx.radar):
+        assert np.array_equal(r[:4], c) and set(np.unique(r[5])) <= {0, 1}  # the first 4 channels are unchanged
+        assert (r[4][r[5] == 0] == 0).all() and 0 <= r[4].min() and r[4].max() <= 1
+    print(f"coherence present on {np.mean([r[5].mean() for r in coh.radar]):.0%} of validation pixels")
     lab = np.concatenate([l.ravel() for l in sets["train"].label])
     shares = np.bincount(lab, minlength=256) / lab.size
     print("train class shares:", {c: round(float(shares[i]), 3) for i, c in enumerate(CLASSES)}, "ignore", round(float(shares[IGNORE]), 3))

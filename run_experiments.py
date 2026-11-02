@@ -28,8 +28,8 @@ NOTEBOOK = "02_train.ipynb"
 
 # The queue, one list per experiment (= folder under experiments/). Each entry changes some settings of the notebook's
 # first code cell. Order = what runs first; the numbers count across all experiments, for --only.
-# Settings you can change: MONTHLY_ONLY, ARCH, PRETRAINED, CONTEXT, AGREE, OVERSAMPLE, FILTER, YEARS, SEED, EPOCHS, BATCH,
-# LR, QUANTIZE.
+# Settings you can change: MONTHLY_ONLY, ARCH, PRETRAINED, CONTEXT, AGREE, OVERSAMPLE, COHERENCE, FILTER, YEARS, SEED,
+# EPOCHS, BATCH, LR, QUANTIZE.
 QUEUES = {
     "exp1_data": [                                # what the data does: sites vs years, label filter, radar filters
     dict(YEARS=(2024,), SEED=0),                  # 0  sites effect: 21 sites, 2024 only (about the same steps as the old runs)
@@ -76,6 +76,11 @@ QUEUES = {
     "exp4_50sites": [
     dict(CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=0),                   # 26
     dict(CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=1),                   # 27
+    ],
+    # exp4 + InSAR coherence and its "present" flag (2 more channels, 30% coherence dropout): the only change
+    "exp5_coherence": [
+    dict(CONTEXT=True, AGREE=True, COHERENCE=True, QUANTIZE=False, SEED=0),   # 28
+    dict(CONTEXT=True, AGREE=True, COHERENCE=True, QUANTIZE=False, SEED=1),   # 29
     ],
 }
 EXPERIMENTS = [dict(e, EXPERIMENT=x) for x, runs in QUEUES.items() for e in runs]
@@ -151,11 +156,11 @@ def rescore():
         f = results_file(name, os.path.dirname(os.path.dirname(w)))
         if not os.path.exists(f) or name.endswith("_smoke"):
             continue
-        ctx = "_ctx" in name                                   # the run name says how its input was built
+        ctx, coh = "_ctx" in name, "_coh" in name              # the run name says how its input was built
         kind = "sharpen" if "sharpen" in name else "smooth" if "smooth" in name else None
-        if (ctx, kind) not in datasets:
-            datasets[(ctx, kind)] = LULCDataset("val", context=ctx, filter=kind)
-        ds = datasets[(ctx, kind)]
+        if (ctx, coh, kind) not in datasets:
+            datasets[(ctx, coh, kind)] = LULCDataset("val", context=ctx, filter=kind, coherence=coh)
+        ds = datasets[(ctx, coh, kind)]
         arch = smp.UnetPlusPlus if "_upp" in name else smp.Unet
         model = arch("resnet34", encoder_weights=None, in_channels=ds.channels, classes=C).to(device)
         model.load_state_dict(torch.load(w, map_location=device))
@@ -225,7 +230,8 @@ def main():
         print(f"[{i}] {name}: started {time.strftime('%H:%M')}  {e}", flush=True)
         t = time.time()
         with open(f"{folder}/log.txt", "w") as log:
-            code = subprocess.run([sys.executable, "-u", __file__, "--one", repr(e)]   # -u: each log line appears at once + (["--smoke"] if smoke else []),
+            # -u: each log line appears at once
+            code = subprocess.run([sys.executable, "-u", __file__, "--one", repr(e)] + (["--smoke"] if smoke else []),
                                   stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, MPLBACKEND="Agg")).returncode
         ok = code == 0 and os.path.exists(results_file(name, out))
         print(f"[{i}] {name}: {'finished' if ok else f'FAILED (see {folder}/log.txt)'} in {(time.time() - t) / 60:.1f} min, "
