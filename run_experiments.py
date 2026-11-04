@@ -11,6 +11,8 @@
     uv run python run_experiments.py --ablation experiments/<exp>/weights/<run>.pt
                                                   what that model relies on: validation IoU with one input part taken
                                                   away at a time, saved as experiments/<exp>/ablation_<run>.md and .png
+    uv run python run_experiments.py --crf experiments/<exp>/weights/<run>.pt
+                                                  that model's validation scores without and with the convolutional CRF
 
 To keep it going when your browser or connection drops:
     nohup uv run python -u run_experiments.py > queue.log 2>&1 &        then: tail -f queue.log
@@ -183,9 +185,10 @@ def load_run(weights, channels):
     return model.to(device).eval()
 
 
-def confusion(model, ds, change=None):
+def confusion(model, ds, change=None, post=None, batch=64):
     """Validation confusion matrix and IoU per class, over real monthly labels only (as in the notebook).
-    change(x) may alter each batch of inputs first (ablation, coherence left out)."""
+    change(x) may alter each batch of inputs first (ablation, coherence left out); post(logits, x) may turn the model's
+    output into the class map instead of argmax (CRF)."""
     import numpy as np
     import torch
     from torch.utils.data import DataLoader
@@ -193,11 +196,13 @@ def confusion(model, ds, change=None):
     C, device = len(CLASSES), next(model.parameters()).device.type
     cm = np.zeros((C, C), np.int64)
     with torch.no_grad():
-        for x, y, _, filled in DataLoader(ds, batch_size=64):
+        for x, y, _, filled in DataLoader(ds, batch_size=batch):
             if change:
                 x = change(x)
+            x = x.to(device)
             with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"):
-                pred = model(x.to(device)).argmax(1).cpu()
+                logits = model(x)
+            pred = (post(logits, x) if post else logits.argmax(1)).cpu()
             keep = (y != IGNORE) & ~filled
             cm += np.bincount((y[keep] * C + pred[keep]).numpy(), minlength=C * C).reshape(C, C)
     tp = np.diag(cm).astype(float)
@@ -337,6 +342,30 @@ def ablation(weights):
     print(f"saved {out}/ablation_{name}.md and .png")
 
 
+def crf(weights):
+    """The model's validation IoU per class as is and with the convolutional CRF (lulc.conv_crf, both settings fixed in
+    advance, guided by the yearly median radar), written to experiments/<experiment>/crf_<run>.md."""
+    import numpy as np
+    from lulc import CLASSES, CRF_SETTINGS, LULCDataset, conv_crf
+
+    name, out = os.path.basename(weights)[:-3], os.path.dirname(os.path.dirname(weights))
+    assert input_of(name)["context"], "the CRF is guided by the yearly median, so the model needs context channels"
+    ds = LULCDataset("val", **input_of(name))
+    model = load_run(weights, ds.channels)
+    rows = [("none (argmax)", *confusion(model, ds))]
+    for label, s in CRF_SETTINGS.items():
+        rows.append((f"{label}: window {s['k']} px, theta_xy {s['theta_xy']}, theta_i {s['theta_i']}",
+                     *confusion(model, ds, post=lambda logits, x, s=s: conv_crf(logits, x[:, 2:4], **s), batch=8)))
+        print(f"{label}: mIoU {rows[-1][2][rows[-1][1].sum(1) > 0].mean():.3f}", flush=True)
+    names = [c.replace("_", " ") for c in CLASSES]
+    md = [f"# `{name}` with a convolutional CRF (validation, 12 sites, real monthly labels)", "",
+          "| CRF | mIoU | " + " | ".join(names) + " |", "|---" * (len(names) + 2) + "|"]
+    for label, cm, iou in rows:
+        md.append(f"| {label} | {iou[cm.sum(1) > 0].mean():.3f} | " + " | ".join(f"{v:.3f}" for v in iou) + " |")
+    open(f"{out}/crf_{name}.md", "w", encoding="utf-8").write("\n".join(md) + "\n")
+    print("\n".join(md))
+
+
 def show_scores(paths):
     print("\nSUMMARY (validation = the numbers to decide with, test = the final exam)")
     print(f"{'run':34s}{'val mIoU':>10s}{'val water':>11s}{'test mIoU':>11s}{'test water':>12s}")
@@ -351,7 +380,7 @@ def show_scores(paths):
 def main():
     args = sys.argv[1:]
     unknown = [a for a in args if a.startswith("--") and a not in
-               ("--one", "--smoke", "--rescore", "--ablation", "--only", "--exp", "--list")]
+               ("--one", "--smoke", "--rescore", "--ablation", "--crf", "--only", "--exp", "--list")]
     if unknown:                                                # an unknown option must not fall through to running the queue
         sys.exit(f"unknown option(s) {unknown}; see the top of this file")
     smoke = "--smoke" in args
@@ -363,6 +392,9 @@ def main():
         return
     if "--ablation" in args:
         ablation(args[args.index("--ablation") + 1])
+        return
+    if "--crf" in args:
+        crf(args[args.index("--crf") + 1])
         return
     only = {int(i) for i in args[args.index("--only") + 1].split(",")} if "--only" in args else None
     exp = args[args.index("--exp") + 1] if "--exp" in args else None

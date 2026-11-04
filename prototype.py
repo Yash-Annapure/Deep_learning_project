@@ -198,22 +198,38 @@ def run(lat, lon, start, model, workers=14, progress=lambda done: None):
     if model.encoder.conv1.in_channels == 6:
         context = np.concatenate([context, months_radar.std(axis=0)])
     maps = [predict(model, radar, context) if radar is not None else None for radar, _ in fetched]
+    return {"months": [f"{y}-{m:02d}" for y, m in months], "maps": maps, **summarise(maps),
+            "scenes": [n for _, n in fetched], "pass_dir": pass_dir, "lat": lat, "lon": lon,
+            "wc": wc, "dw": dw, **second_opinion(maps, wc)}
 
+
+def summarise(maps):
+    """% of the area per class each month, the change against the previous month WITH data, and first to last (points)."""
     C = len(CLASSES)
-    shares = np.full((12, C), np.nan)                              # % of the area per class, per month
+    shares = np.full((12, C), np.nan)
     for i, mp in enumerate(maps):
         if mp is not None:
             ok = mp != NO_DATA                                     # pixels with radar
             shares[i] = np.bincount(mp[ok], minlength=C)[:C] / ok.sum() * 100
-    change = np.full((12, C), np.nan)                              # points of change against the previous month WITH data
+    change = np.full((12, C), np.nan)
     have = [i for i in range(12) if maps[i] is not None]
     for prev, cur in zip(have, have[1:]):
         change[cur] = shares[cur] - shares[prev]
     total = shares[have[-1]] - shares[have[0]] if len(have) >= 2 else np.full(C, np.nan)
+    return {"shares": shares, "change": change, "total": total}
 
-    return {"months": [f"{y}-{m:02d}" for y, m in months], "maps": maps, "shares": shares, "change": change,
-            "total": total, "scenes": [n for _, n in fetched], "pass_dir": pass_dir, "lat": lat, "lon": lon,
-            "wc": wc, "dw": dw, **second_opinion(maps, wc)}
+
+def despike(maps):
+    """One-month flickers removed: where a pixel's class differs from the months before and after (with radar) and those
+    two agree, it takes their class. A real change lasts at least 2 months and stays; radar speckle flips a pixel for one
+    month and goes. The first and last month have no neighbour on one side and are kept as they are."""
+    have = [i for i, mp in enumerate(maps) if mp is not None]
+    out = list(maps)
+    for a, i, b in zip(have, have[1:], have[2:]):
+        prev, cur, nxt = maps[a], maps[i], maps[b]                 # the original neighbours, not already cleaned ones
+        flicker = (prev == nxt) & (cur != prev) & (cur != NO_DATA) & (prev != NO_DATA)
+        out[i] = np.where(flicker, prev, cur).astype(np.uint8)
+    return out
 
 
 CROP_MONTHS = 3   # crops in at least this many months = cropland, WorldCover's definition (planted at least once a year)
@@ -358,6 +374,9 @@ def check(result):
     assert np.isnan(result["agreement"]) or 0 <= result["agreement"] <= 1
     big = biggest_changes(result)
     assert all(abs(a[1]) >= abs(b[1]) for a, b in zip(big, big[1:]))
+    a, b = np.zeros((1, 1), np.uint8), np.ones((1, 1), np.uint8)
+    cleaned = despike([a, b, a, None, b, b])
+    assert int(cleaned[1][0, 0]) == 0 and cleaned[3] is None and int(cleaned[4][0, 0]) == 1   # blip gone, lasting change kept
     crop, grass = (np.full((2, 2), CLASSES.index(c), np.uint8) for c in ("crops", "low_vegetation"))
     assert second_opinion([crop] * CROP_MONTHS + [grass] * 9, grass)["typical"][0, 0] == CLASSES.index("crops")
     assert second_opinion([crop] * (CROP_MONTHS - 1) + [grass] * 9, grass)["typical"][0, 0] == CLASSES.index("low_vegetation")

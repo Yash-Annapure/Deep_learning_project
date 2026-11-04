@@ -28,9 +28,11 @@ def model():
 
 @st.cache_resource
 def load(path):
+    """A saved run in two versions: the model's raw monthly maps, and with one-month flickers removed (P.despike)."""
     res = P.load(path)
     res.update(P.second_opinion(res["maps"], res["wc"]))    # runs saved before a rule change get the current comparison
-    return res
+    clean = P.despike(res["maps"])
+    return {True: {**res, "maps": clean, **P.summarise(clean)}, False: res}
 
 
 def compute(lat, lon, start, bar):
@@ -91,7 +93,7 @@ if not choices:
     st.stop()
 mode = st.sidebar.radio("Show", choices)
 if mode == "Saved run":
-    path = st.sidebar.selectbox("Place", saved, format_func=lambda p: load(p).get("place", os.path.basename(p)))
+    path = st.sidebar.selectbox("Place", saved, format_func=lambda p: load(p)[False].get("place", os.path.basename(p)))
 else:
     today = dt.date.today()
     last_full = today.year * 12 + today.month - 2                 # last complete month, counted in months since year 0
@@ -122,7 +124,10 @@ else:
         st.stop()
     bar.empty()
 
-res = load(path)
+clean = st.sidebar.toggle("Remove one-month flickers", value=True,
+                          help="A pixel whose class differs from both the month before and the month after, which agree, "
+                               "takes their class: a real change lasts at least 2 months, radar speckle flips a pixel for one.")
+res = load(path)[clean]
 P.check(res)                                                      # shares add up to 100, changes to 0
 have = [i for i, mp in enumerate(res["maps"]) if mp is not None]
 
@@ -153,7 +158,9 @@ with trends:
     table(pd.DataFrame(res["change"], index=res["months"], columns=NAMES))
     st.subheader(f"Total change, {res['months'][have[0]]} to {res['months'][have[-1]]} (percentage points)")
     table(pd.DataFrame([res["total"]], columns=NAMES, index=["total"]))
-    st.caption(f"{res['pass_dir'].capitalize()} passes, scenes per month: {res['scenes']}. Changes include classification "
+    st.caption(("One-month flickers removed (sidebar); the first and last month have no neighbour on one side and are "
+                "kept as they are, so the total change is the same either way. " if clean else "Raw monthly maps. ")
+               + f"{res['pass_dir'].capitalize()} passes, scenes per month: {res['scenes']}. Changes include classification "
                "errors and seasonal effects (for example wet versus dry season), not only real land-use change.")
 with opinion:
     dw = res.get("dw")                                            # runs saved before Dynamic World was added have none

@@ -72,6 +72,33 @@ def ssl4eo(model):
     return ssl4eo_input(model)
 
 
+CRF_SETTINGS = {"mild": dict(k=7, theta_xy=3.0, theta_i=0.10, iters=5),       # fixed before scoring them (exp9)
+                "strong": dict(k=11, theta_xy=5.0, theta_i=0.10, iters=5)}
+
+
+def conv_crf(logits, guide, k=7, theta_xy=3.0, theta_i=0.10, iters=5):
+    """A convolutional CRF (Teichmann & Cipolla 2018): mean-field inference of a fully connected CRF restricted to a
+    k x k window, on the GPU. Neighbouring pixels are pushed towards the same class unless the guide image shows an
+    edge between them. logits (B, C, H, W); guide (B, G, H, W) in 0..1, here the yearly median radar, where 12 months
+    average the speckle away and real boundaries (fields, shores, rivers) remain. Returns the class map (B, H, W).
+    Potts model: an appearance kernel (distance and guide difference) plus a smoothness kernel (distance only)."""
+    F = torch.nn.functional
+    B, C, H, W = logits.shape
+    r = k // 2
+    off = torch.arange(-r, r + 1, device=logits.device, dtype=torch.float32)
+    dist2 = (off[:, None] ** 2 + off[None, :] ** 2).view(1, k * k, 1)
+    g = F.unfold(guide, k, padding=r).view(B, guide.shape[1], k * k, H * W)
+    diff2 = ((g - guide.reshape(B, -1, 1, H * W)) ** 2).sum(1)                       # (B, k*k, H*W)
+    kernel = torch.exp(-dist2 / (2 * theta_xy ** 2)) * (1 + torch.exp(-diff2 / (2 * theta_i ** 2)))
+    kernel[:, k * k // 2] = 0                                                          # no message from a pixel to itself
+    unary = F.log_softmax(logits.float(), 1)
+    q = unary.exp()
+    for _ in range(iters):
+        msg = (F.unfold(q, k, padding=r).view(B, C, k * k, H * W) * kernel[:, None]).sum(2)
+        q = F.softmax(unary + msg.view(B, C, H, W), 1)
+    return q.argmax(1)
+
+
 def _blur(x, sigma):
     """Gaussian blur of each band of x, shape (bands, H, W), done as two 1-D passes."""
     r = max(1, int(3 * sigma))
