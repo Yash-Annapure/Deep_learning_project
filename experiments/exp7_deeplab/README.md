@@ -13,4 +13,16 @@ the prototype switches to DeepLabV3+ if validation mIoU is at least **0.010 high
 0.05 validation IoU. Otherwise it is reported as a negative result. Edges are also compared by eye on the run's
 detail pictures, but the number decides.
 
-**Results:** pending.
+**Results** (validation IoU, mean of 2 seeds, the same 12 sites; test = the 3 development sites):
+
+| | Val mIoU | water | trees | low veg | flooded veg | crops | built | bare | Test mIoU |
+|---|---|---|---|---|---|---|---|---|---|
+| exp4 (U-Net) | 0.450 | 0.538 | 0.368 | 0.372 | 0.360 | 0.355 | 0.785 | 0.371 | 0.395 |
+| exp7 (DeepLabV3+) | 0.456 | 0.515 | 0.329 | 0.375 | 0.391 | 0.366 | 0.795 | 0.421 | 0.368 |
+| change | +0.006 | −0.023 | −0.039 | +0.003 | +0.031 | +0.011 | +0.010 | +0.050 | −0.027 |
+
+**Conclusion against the rule: not met** (+0.006, the bar is +0.010). DeepLabV3+ trades classes rather than
+separating them better: bare land (+0.050) and flooded vegetation (+0.031) gain, while trees (−0.039) and water
+(−0.023) lose, and the 3 test sites drop 0.027. Trees, the class that depended most on fine texture in the exp4
+ablation (blurred to 20 m: −0.17), lose the most, which fits a decoder that predicts at a quarter of the resolution.
+The prototype keeps the U-Net. Reported as a negative result.

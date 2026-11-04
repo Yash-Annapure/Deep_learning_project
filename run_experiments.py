@@ -13,6 +13,8 @@
                                                   away at a time, saved as experiments/<exp>/ablation_<run>.md and .png
     uv run python run_experiments.py --crf experiments/<exp>/weights/<run>.pt
                                                   that model's validation scores without and with the convolutional CRF
+    uv run python run_experiments.py --holdout <weights.pt> [<weights.pt> ...]
+                                                  THE FINAL EVALUATION, once at the very end: scores on the 6 holdout sites
 
 To keep it going when your browser or connection drops:
     nohup uv run python -u run_experiments.py > queue.log 2>&1 &        then: tail -f queue.log
@@ -366,6 +368,31 @@ def crf(weights):
     print("\n".join(md))
 
 
+def holdout(weights_list):
+    """The final evaluation, run ONCE at the very end: each model's IoU per class on the 6 holdout sites (never used for
+    any decision), the same scoring as validation. Saved into each results file (holdout_miou, holdout_iou) and side
+    by side in experiments/holdout_results.md."""
+    import numpy as np
+    from lulc import CLASSES, LULCDataset
+    names = [c.replace("_", " ") for c in CLASSES]
+    md = ["# Final evaluation on the 6 holdout sites (scored once)", "",
+          "| Model | mIoU | " + " | ".join(names) + " |", "|---" * (len(names) + 2) + "|"]
+    for w in weights_list:
+        name = os.path.basename(w)[:-3]
+        ds = LULCDataset("holdout", **input_of(name))
+        cm, iou = confusion(load_run(w, ds.channels), ds)
+        m = float(iou[cm.sum(1) > 0].mean())
+        f = results_file(name, os.path.dirname(os.path.dirname(w)))
+        r = json.load(open(f)) if os.path.exists(f) else {}
+        r.update(holdout_miou=m, holdout_iou=iou.tolist())
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        json.dump(r, open(f, "w"))
+        md.append(f"| `{w}` | {m:.3f} | " + " | ".join(f"{v:.3f}" for v in iou) + " |")
+        print(f"{name:40s} holdout mIoU {m:.3f}", flush=True)
+    open("experiments/holdout_results.md", "w", encoding="utf-8").write("\n".join(md) + "\n")
+    print("\n".join(md))
+
+
 def show_scores(paths):
     print("\nSUMMARY (validation = the numbers to decide with, test = the final exam)")
     print(f"{'run':34s}{'val mIoU':>10s}{'val water':>11s}{'test mIoU':>11s}{'test water':>12s}")
@@ -380,7 +407,7 @@ def show_scores(paths):
 def main():
     args = sys.argv[1:]
     unknown = [a for a in args if a.startswith("--") and a not in
-               ("--one", "--smoke", "--rescore", "--ablation", "--crf", "--only", "--exp", "--list")]
+               ("--one", "--smoke", "--rescore", "--ablation", "--crf", "--holdout", "--only", "--exp", "--list")]
     if unknown:                                                # an unknown option must not fall through to running the queue
         sys.exit(f"unknown option(s) {unknown}; see the top of this file")
     smoke = "--smoke" in args
@@ -395,6 +422,9 @@ def main():
         return
     if "--crf" in args:
         crf(args[args.index("--crf") + 1])
+        return
+    if "--holdout" in args:
+        holdout(args[args.index("--holdout") + 1:])
         return
     only = {int(i) for i in args[args.index("--only") + 1].split(",")} if "--only" in args else None
     exp = args[args.index("--exp") + 1] if "--exp" in args else None

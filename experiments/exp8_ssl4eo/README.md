@@ -19,5 +19,10 @@ entries 34-37 in `run_experiments.py`):
    validation mIoU.
 2. **Prototype:** it switches to ResNet-50 SSL4EO if that model beats exp4 (0.450) by at least **0.010** validation
    mIoU and no class drops by more than 0.05 validation IoU.
+3. **Added after seeing one result** (ResNet-50 scratch, seed 0: 0.467), before scratch seed 1 and both SSL4EO runs
+   were known: rules 1-2 did not say what happens if the control itself is the best model. ResNet-50 from scratch
+   becomes the prototype's model if it beats exp4 (0.450) by at least **0.010** validation mIoU and no class drops by
+   more than 0.05. If it and SSL4EO both pass, the higher validation mIoU wins. Since this rule was written after one
+   seed was seen, it is mildly optimistic; the holdout shows whether the choice holds.
 
 **Results:** pending.

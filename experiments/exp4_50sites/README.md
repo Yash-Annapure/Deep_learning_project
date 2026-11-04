@@ -38,3 +38,38 @@ the coherence experiment.
   savanna, which the new sites were not aimed at. Part of the validation gain is also that validation now includes a
   swamp (bangweulu) and a desert town (gao), where the new training sites pay off: the new data helps where it was
   aimed, not everywhere. The 6 holdout sites give the final, unbiased number.
+
+## What the model relies on (channel ablation, seed 0)
+
+`run_experiments.py --ablation experiments/exp4_50sites/weights/hybrid_ctx_agree.pt`; full table and heatmap in
+`ablation_hybrid_ctx_agree.md` / `.png`. Validation (12 sites), one part of the input taken away at a time; the
+numbers are the change in IoU against the full input (baseline mIoU 0.455).
+
+| Class (baseline IoU) | Recognised by | Evidence |
+|---|---|---|
+| built (0.791) | the yearly median (bright all year) and VH; the month itself barely matters | median removed −0.79 (to 0.00); month → median −0.03 |
+| low vegetation (0.394) | the yearly context; hardly the month | median removed −0.39; this month removed −0.08 |
+| crops (0.357) | how this month differs from the typical year | month → median −0.34 (to 0.02) |
+| bare (0.364) | this month, both polarisations, and its season | VV −0.31, VH −0.36, month → median −0.19 |
+| flooded vegetation (0.397) | everything: the month, its season and fine texture; the most fragile class | VV −0.33, VH −0.37, blur −0.29, month → median −0.16 |
+| trees (0.332) | this month's radar and its fine texture; barely the median | VV −0.27, VH −0.22, blur −0.17, median −0.07 |
+| water (0.547) | the month and the median together; little texture | VH −0.26, median −0.38, blur −0.07 |
+
+- **Two strategies.** Stable classes (built, low vegetation) are recognised from the yearly picture, seasonal classes
+  (crops, bare, flooded vegetation) from how this month departs from it. The monthly maps, and so the changes the
+  prototype reports, are driven by each month's own signal, not only by the typical year.
+- **Crops exist only through their season:** with the month replaced by the yearly median, crops IoU falls from 0.357
+  to 0.021. The same effect makes a majority vote over 12 months call most fields bare or low vegetation (the reason
+  for the 3-month cropland rule in the prototype's yearly map).
+- **It explains the largest confusion left** (true trees predicted as low vegetation, 0.43): low vegetation is the
+  class the model falls back on from context, while trees need the month's signal and texture.
+- **The model reads the relationship between VV and VH:** taking away VH alone (−0.247) hurts more than taking away
+  the whole month (−0.238). A real VV next to an average VH is a combination it never saw; with both gone it falls back
+  on the yearly median.
+- **Fine texture matters for trees and flooded vegetation** (blurred to 20 m: −0.17, −0.29), not for low vegetation or
+  built (−0.01, −0.05).
+
+**Caveat:** a channel replaced by its average gives inputs that never occurred in training, so the single-channel and
+median rows overstate the pure loss of information (the VV/VH point shows it). "Month → yearly median" is a realistic
+input and the most trustworthy row. **Consequence for the prototype:** the median is computed from the months that
+have radar; with few months (coverage gaps) the context the model relies on most is weaker.

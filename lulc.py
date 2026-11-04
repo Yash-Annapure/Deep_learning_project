@@ -140,7 +140,8 @@ def _read(f):
 
 class LULCDataset(Dataset):
     """role is 'train', 'val', 'test' or 'holdout' (the fresh test set, scored only in the final evaluation), taken
-    from data/sites.csv, so a site is only ever in one split.
+    from data/sites.csv, so a site is only ever in one split. Sites with role 'final' are used only by the final model,
+    which trains on several roles at once: role=('train', 'val', 'final').
 
     Label rule: the month's own label where it exists, otherwise the site's yearly label (filled = True).
     Confidence cutoffs and loss weights are not applied here; the training step does that.
@@ -173,13 +174,14 @@ class LULCDataset(Dataset):
     def __init__(self, role, data_dir="data", years=None, patch=256, stride=128, min_labelled=0.05, context=False,
                  agree=False, quantize=False, workers=8, filter=None, coherence=False, spread=False):
         roles = {r["name"]: r["role"] for r in csv.DictReader(open(f"{data_dir}/sites.csv"))}
+        wanted = (role,) if isinstance(role, str) else tuple(role)   # several roles at once: the final model's training set
         self.patch = patch
         self.channels = 2 + 2 * context + 2 * spread + 2 * coherence
         self.quantize = quantize
         store = (lambda a: np.round(a * 255).astype(np.uint8)) if quantize else (lambda a: a.astype(np.float16))
         self.radar, self.label, self.conf, self.filled, self.site, self.month, self.year = [], [], [], [], [], [], []
         self.items = []  # (index of site-month, row, col)
-        for site in sorted(s for s, r in roles.items() if r == role):
+        for site in sorted(s for s, r in roles.items() if r in wanted):
             # the digit pattern keeps "dodoma" from also picking up the files of "dodoma_rural"
             found = sorted(int(f[-8:-4]) for f in glob.glob(f"{data_dir}/yearly/{site}_[0-9][0-9][0-9][0-9].npz"))
             if agree:
