@@ -350,6 +350,10 @@ def show_scores(paths):
 
 def main():
     args = sys.argv[1:]
+    unknown = [a for a in args if a.startswith("--") and a not in
+               ("--one", "--smoke", "--rescore", "--ablation", "--only", "--exp", "--list")]
+    if unknown:                                                # an unknown option must not fall through to running the queue
+        sys.exit(f"unknown option(s) {unknown}; see the top of this file")
     smoke = "--smoke" in args
     if "--one" in args:                                        # internal: one run in this process
         child(ast.literal_eval(args[args.index("--one") + 1]), smoke)
