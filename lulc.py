@@ -98,7 +98,11 @@ class LULCDataset(Dataset):
 
     filter=None, 'smooth' or 'sharpen' applies filter_radar to the radar before it is scaled (see there).
 
-    coherence=True adds two more channels (after context): the month's InSAR coherence (data/coherence/, made by
+    spread=True adds two channels after context: each pixel's standard deviation of VV and VH over the site-year's
+    months, the same for all 12 months. Trees and buildings stay steady all year, crops swing (bare, green, harvested),
+    grass moderately: the median alone hides that.
+
+    coherence=True adds two more channels (after context and spread): the month's InSAR coherence (data/coherence/, made by
     coherence.py; 0 where there is none) and a flag, 1 where the coherence is real. Without the flag a missing value
     would read as 0 = "changed completely" (water); with it the model can tell "no coherence" from "low coherence".
 
@@ -108,10 +112,10 @@ class LULCDataset(Dataset):
     """
 
     def __init__(self, role, data_dir="data", years=None, patch=256, stride=128, min_labelled=0.05, context=False,
-                 agree=False, quantize=False, workers=8, filter=None, coherence=False):
+                 agree=False, quantize=False, workers=8, filter=None, coherence=False, spread=False):
         roles = {r["name"]: r["role"] for r in csv.DictReader(open(f"{data_dir}/sites.csv"))}
         self.patch = patch
-        self.channels = 2 + 2 * context + 2 * coherence
+        self.channels = 2 + 2 * context + 2 * spread + 2 * coherence
         self.quantize = quantize
         store = (lambda a: np.round(a * 255).astype(np.uint8)) if quantize else (lambda a: a.astype(np.float16))
         self.radar, self.label, self.conf, self.filled, self.site, self.month, self.year = [], [], [], [], [], [], []
@@ -155,11 +159,14 @@ class LULCDataset(Dataset):
                     self.month.append(int(f[-6:-4]))  # file names end in _YYYY-MM.npz
                     self.year.append(year)
                     self.items.extend((k, r, c) for r, c in keep)
-                if context:  # median over the site-year's months; scaling is monotonic, so scale-then-median equals median-then-scale
-                    med = np.median(np.stack(self.radar[first:]), axis=0)
-                    med = np.round(med).astype(np.uint8) if quantize else med.astype(np.float16)
+                if context or spread:  # median over the site-year's months; scaling is monotonic, so scale-then-median equals median-then-scale
+                    months_radar = np.stack(self.radar[first:])
+                    extra = (([np.median(months_radar, axis=0)] if context else [])     # exactly as before spread existed
+                             + ([months_radar.astype(np.float32).std(axis=0)] if spread else []))
+                    extra = np.concatenate(extra)
+                    extra = np.round(extra).astype(np.uint8) if quantize else extra.astype(np.float16)
                     for k in range(first, len(self.radar)):
-                        self.radar[k] = np.concatenate([self.radar[k], med])
+                        self.radar[k] = np.concatenate([self.radar[k], extra])
                 if coherence:  # same file name as the month's radar file, in data/coherence/
                     for k, f in zip(range(first, len(self.radar)), files):
                         cf = f"{data_dir}/coherence/{os.path.basename(f)}"
@@ -209,6 +216,11 @@ if __name__ == "__main__":  # self-check: python lulc.py
     assert ctx.channels == 4 and ctx[0][0].shape == (4, 256, 256) and 0 <= ctx[0][0].min() and ctx[0][0].max() <= 1
     first_month = next(i for i in range(1, len(ctx.site)) if ctx.site[i] == ctx.site[0])
     assert np.array_equal(ctx.radar[0][2:], ctx.radar[first_month][2:]) and not np.array_equal(ctx.radar[0][:2], ctx.radar[first_month][:2])
+    sp = LULCDataset("val", context=True, spread=True)  # spread: 2 more channels, >= 0, the same for all months of a site, context unchanged
+    assert sp.channels == 6 and sp[0][0].shape == (6, 256, 256)
+    for r, c in zip(sp.radar, ctx.radar):
+        assert np.array_equal(r[:4], c) and r[4:].min() >= 0
+    assert np.array_equal(sp.radar[0][4:], sp.radar[first_month][4:]) and sp.radar[0][4:].astype(np.float32).mean() > 0
     coh = LULCDataset("val", context=True, coherence=True)  # coherence + flag: 6 channels, coherence 0 wherever the flag says none
     assert coh.channels == 6 and coh[0][0].shape == (6, 256, 256)
     for r, c in zip(coh.radar, ctx.radar):

@@ -52,8 +52,11 @@ def init_ee():
 
 
 def load_model(path=WEIGHTS):
-    model = smp.Unet("resnet34", encoder_weights=None, in_channels=4, classes=len(CLASSES)).to(device)
-    model.load_state_dict(torch.load(path, map_location=device))
+    """The weights say how many input channels the model takes: 4 = radar + context, 6 = also the yearly spread."""
+    weights = torch.load(path, map_location=device)
+    channels = weights["encoder.conv1.weight"].shape[1]
+    model = smp.Unet("resnet34", encoder_weights=None, in_channels=channels, classes=len(CLASSES)).to(device)
+    model.load_state_dict(weights)
     return model.eval()
 
 
@@ -150,7 +153,7 @@ def dynamic_world(region, grid, year, month):
 
 @torch.no_grad()
 def predict(model, radar_db, context):
-    """(2, H, W) radar in dB + (2, H, W) scaled context -> (H, W) class map. Scaled exactly like the training data,
+    """(2, H, W) radar in dB + (2 or 4, H, W) scaled context -> (H, W) class map. Scaled exactly like the training data,
     padded to a multiple of 32. Pixels without radar get NO_DATA, so they never count in the shares."""
     h, w = radar_db.shape[1:]
     x = torch.from_numpy(np.concatenate([scale_radar(radar_db), context]))[None].to(device)
@@ -181,8 +184,12 @@ def run(lat, lon, start, model, workers=14, progress=lambda done: None):
     radars = [r for r, _ in fetched if r is not None]
     if not radars:
         raise ValueError("none of the 12 months has radar at this location")
-    # context, as in training: each pixel's median radar over the months (training: the calendar year; here the 12 months)
-    context = np.median(np.stack([scale_radar(r) for r in radars]), axis=0)
+    # context, as in training: each pixel's median radar over the months (training: the calendar year; here the 12 months),
+    # plus its standard deviation for a model trained with spread (6 input channels)
+    months_radar = np.stack([scale_radar(r) for r in radars])
+    context = np.median(months_radar, axis=0)
+    if model.encoder.conv1.in_channels == 6:
+        context = np.concatenate([context, months_radar.std(axis=0)])
     maps = [predict(model, radar, context) if radar is not None else None for radar, _ in fetched]
 
     C = len(CLASSES)

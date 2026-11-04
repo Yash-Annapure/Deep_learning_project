@@ -28,8 +28,8 @@ NOTEBOOK = "02_train.ipynb"
 
 # The queue, one list per experiment (= folder under experiments/). Each entry changes some settings of the notebook's
 # first code cell. Order = what runs first; the numbers count across all experiments, for --only.
-# Settings you can change: MONTHLY_ONLY, ARCH, PRETRAINED, CONTEXT, AGREE, OVERSAMPLE, COHERENCE, FILTER, YEARS, SEED,
-# EPOCHS, BATCH, LR, QUANTIZE.
+# Settings you can change: MONTHLY_ONLY, ARCH, PRETRAINED, CONTEXT, AGREE, OVERSAMPLE, SPREAD, COHERENCE, FILTER, YEARS,
+# SEED, EPOCHS, BATCH, LR, QUANTIZE.
 QUEUES = {
     "exp1_data": [                                # what the data does: sites vs years, label filter, radar filters
     dict(YEARS=(2024,), SEED=0),                  # 0  sites effect: 21 sites, 2024 only (about the same steps as the old runs)
@@ -81,6 +81,12 @@ QUEUES = {
     "exp5_coherence": [
     dict(CONTEXT=True, AGREE=True, COHERENCE=True, QUANTIZE=False, SEED=0),   # 28
     dict(CONTEXT=True, AGREE=True, COHERENCE=True, QUANTIZE=False, SEED=1),   # 29
+    ],
+    # exp4 + each pixel's yearly variability (std of VV and VH) as 2 more channels: aimed at trees / crops / low
+    # vegetation, the largest confusion left; unlike coherence it can be computed live
+    "exp6_spread": [
+    dict(CONTEXT=True, AGREE=True, SPREAD=True, QUANTIZE=False, SEED=0),      # 30
+    dict(CONTEXT=True, AGREE=True, SPREAD=True, QUANTIZE=False, SEED=1),      # 31
     ],
 }
 EXPERIMENTS = [dict(e, EXPERIMENT=x) for x, runs in QUEUES.items() for e in runs]
@@ -156,11 +162,11 @@ def rescore():
         f = results_file(name, os.path.dirname(os.path.dirname(w)))
         if not os.path.exists(f) or name.endswith("_smoke"):
             continue
-        ctx, coh = "_ctx" in name, "_coh" in name              # the run name says how its input was built
+        ctx, coh, spread = "_ctx" in name, "_coh" in name, "_spread" in name   # the run name says how its input was built
         kind = "sharpen" if "sharpen" in name else "smooth" if "smooth" in name else None
-        if (ctx, coh, kind) not in datasets:
-            datasets[(ctx, coh, kind)] = LULCDataset("val", context=ctx, filter=kind, coherence=coh)
-        ds = datasets[(ctx, coh, kind)]
+        if (ctx, coh, spread, kind) not in datasets:
+            datasets[(ctx, coh, spread, kind)] = LULCDataset("val", context=ctx, filter=kind, coherence=coh, spread=spread)
+        ds = datasets[(ctx, coh, spread, kind)]
         arch = smp.UnetPlusPlus if "_upp" in name else smp.Unet
         model = arch("resnet34", encoder_weights=None, in_channels=ds.channels, classes=C).to(device)
         model.load_state_dict(torch.load(w, map_location=device))
