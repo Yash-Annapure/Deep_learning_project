@@ -8,6 +8,9 @@
     uv run python run_experiments.py --rescore    score every saved model again on the CURRENT validation sites (no training).
                                                   Use it after validation sites were added: the old validation numbers are kept
                                                   as val_*_oldval in the results files, the test numbers are not touched.
+    uv run python run_experiments.py --ablation experiments/<exp>/weights/<run>.pt
+                                                  what that model relies on: validation IoU with one input part taken
+                                                  away at a time, saved as experiments/<exp>/ablation_<run>.md and .png
 
 To keep it going when your browser or connection drops:
     nohup uv run python -u run_experiments.py > queue.log 2>&1 &        then: tail -f queue.log
@@ -145,50 +148,74 @@ def child(overrides, smoke):
         exec(compile(source, NOTEBOOK, "exec"), g)
 
 
+def input_of(name):
+    """How a run's input was built, read from its name: the LULCDataset options."""
+    kind = "sharpen" if "sharpen" in name else "smooth" if "smooth" in name else None
+    return dict(context="_ctx" in name, coherence="_coh" in name, spread="_spread" in name, filter=kind)
+
+
+def load_run(weights, channels):
+    """A saved model, built the way its run name says (architecture from the name, input channels given)."""
+    import segmentation_models_pytorch as smp
+    import torch
+    from lulc import CLASSES
+    name = os.path.basename(weights)[:-3]
+    arch = smp.UnetPlusPlus if "_upp" in name else smp.Unet
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = arch("resnet34", encoder_weights=None, in_channels=channels, classes=len(CLASSES)).to(device)
+    model.load_state_dict(torch.load(weights, map_location=device))
+    return model.eval()
+
+
+def confusion(model, ds, change=None):
+    """Validation confusion matrix and IoU per class, over real monthly labels only (as in the notebook).
+    change(x) may alter each batch of inputs first (ablation, coherence left out)."""
+    import numpy as np
+    import torch
+    from torch.utils.data import DataLoader
+    from lulc import CLASSES, IGNORE
+    C, device = len(CLASSES), next(model.parameters()).device.type
+    cm = np.zeros((C, C), np.int64)
+    with torch.no_grad():
+        for x, y, _, filled in DataLoader(ds, batch_size=64):
+            if change:
+                x = change(x)
+            with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"):
+                pred = model(x.to(device)).argmax(1).cpu()
+            keep = (y != IGNORE) & ~filled
+            cm += np.bincount((y[keep] * C + pred[keep]).numpy(), minlength=C * C).reshape(C, C)
+    tp = np.diag(cm).astype(float)
+    return cm, tp / np.maximum(tp + (cm.sum(0) - tp) + (cm.sum(1) - tp), 1)
+
+
 def rescore():
     """Scores every saved model (experiments/*/weights/*.pt) again on the current validation sites and updates its results file."""
     import glob
     import numpy as np
-    import segmentation_models_pytorch as smp
-    import torch
-    from torch.utils.data import DataLoader
-    from lulc import CLASSES, IGNORE, LULCDataset
+    from lulc import LULCDataset
 
-    C = len(CLASSES)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     datasets = {}                                              # one validation dataset per way of preparing the radar
     for w in sorted(glob.glob("experiments/*/weights/*.pt")):
         name = os.path.basename(w)[:-3]
         f = results_file(name, os.path.dirname(os.path.dirname(w)))
         if not os.path.exists(f) or name.endswith("_smoke"):
             continue
-        ctx, coh, spread = "_ctx" in name, "_coh" in name, "_spread" in name   # the run name says how its input was built
-        kind = "sharpen" if "sharpen" in name else "smooth" if "smooth" in name else None
-        if (ctx, coh, spread, kind) not in datasets:
-            datasets[(ctx, coh, spread, kind)] = LULCDataset("val", context=ctx, filter=kind, coherence=coh, spread=spread)
-        ds = datasets[(ctx, coh, spread, kind)]
-        arch = smp.UnetPlusPlus if "_upp" in name else smp.Unet
-        model = arch("resnet34", encoder_weights=None, in_channels=ds.channels, classes=C).to(device)
-        model.load_state_dict(torch.load(w, map_location=device))
-        model.eval()
+        key = tuple(input_of(name).items())
+        if key not in datasets:
+            datasets[key] = LULCDataset("val", **input_of(name))
+        ds = datasets[key]
+        model = load_run(w, ds.channels)
+        coh = input_of(name)["coherence"]
 
-        def confusion(no_coh=False):
-            cm = np.zeros((C, C), np.int64)
-            with torch.no_grad():
-                for x, y, _, filled in DataLoader(ds, batch_size=64):
-                    if no_coh:
-                        x[:, -2:] = 0                          # coherence and its flag empty, as in the prototype
-                    with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"):
-                        pred = model(x.to(device)).argmax(1).cpu()
-                    keep = (y != IGNORE) & ~filled             # real monthly labels only, as in the notebook
-                    cm += np.bincount((y[keep] * C + pred[keep]).numpy(), minlength=C * C).reshape(C, C)
-            tp = np.diag(cm).astype(float)
-            return cm, tp, tp / np.maximum(tp + (cm.sum(0) - tp) + (cm.sum(1) - tp), 1)
+        def no_coh(x):
+            x[:, -2:] = 0                                      # coherence and its flag empty, as in the prototype
+            return x
 
-        cm, tp, iou = confusion()
+        cm, iou = confusion(model, ds)
+        tp = np.diag(cm).astype(float)
         r = json.load(open(f))
         if coh:                                                # the same model where coherence can't be had (the prototype)
-            cm0, _, iou0 = confusion(no_coh=True)
+            cm0, iou0 = confusion(model, ds, no_coh)
             r["val_miou_nocoh"], r["val_iou_nocoh"] = float(iou0[cm0.sum(1) > 0].mean()), iou0.tolist()
             print(f"{name:34s} without coherence: val mIoU {r['val_miou_nocoh']:.3f}", flush=True)
         for k in ("val_miou", "val_water_iou", "val_water_precision"):
@@ -201,6 +228,97 @@ def rescore():
         json.dump(r, open(f, "w"))
         print(f"{name:34s} val mIoU {r['val_miou']:.3f} (was {r.get('val_miou_oldval', float('nan')):.3f})   "
               f"water IoU {r['val_water_iou']:.3f}   water precision {r['val_water_precision']:.3f}", flush=True)
+
+
+def ablation(weights):
+    """What the model relies on: its validation IoU per class when one part of its input is taken away, written to
+    experiments/<experiment>/ablation_<run>.md (table) and .png (heatmap of the change per class).
+    "Taken away" = replaced by that channel's average over the validation set (a value the model has seen, unlike 0,
+    which would read as the darkest radar, i.e. water), or by something that keeps the rest intact (see each row)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.colors import TwoSlopeNorm
+    from torchvision.transforms.functional import gaussian_blur
+    from lulc import CLASSES, LULCDataset
+
+    name, out = os.path.basename(weights)[:-3], os.path.dirname(os.path.dirname(weights))
+    opts = input_of(name)
+    ds = LULCDataset("val", **opts)
+    model = load_run(weights, ds.channels)
+    mean = [float(np.mean([r[c].mean(dtype=np.float64) for r in ds.radar])) for c in range(ds.channels)]
+    ctx = [2, 3] if opts["context"] else []
+    spread = [2 + len(ctx), 3 + len(ctx)] if opts["spread"] else []
+
+    def to_mean(*chans):
+        def f(x):
+            for c in chans:
+                x[:, c] = mean[c]
+            return x
+        return f
+
+    def month_as_median(x):
+        x[:, :2] = x[:, 2:4]
+        return x
+
+    def blur_month(x):
+        x[:, :2] = gaussian_blur(x[:, :2], kernel_size=13, sigma=2.0)
+        return x
+
+    def no_coh(x):
+        x[:, -2:] = 0
+        return x
+
+    variants = [("everything (baseline)", "the model as trained", None),
+                ("this month's VV → average", "how much it needs VV (strongest echo: built, bare, water)", to_mean(0)),
+                ("this month's VH → average", "how much it needs VH (volume scattering: vegetation)", to_mean(1)),
+                ("this month's radar → average", "whether the month itself matters at all, or the yearly context does the work", to_mean(0, 1))]
+    if ctx:
+        variants += [("this month → the yearly median", "whether it reads THIS month, or mostly the typical year "
+                      "(the month's own changes, e.g. a flood, are gone)", month_as_median),
+                     ("yearly median → average", "how much it needs the yearly context", to_mean(*ctx))]
+    if spread:
+        variants += [("yearly spread → average", "how much it needs the yearly variability", to_mean(*spread))]
+    if opts["coherence"]:
+        variants += [("coherence left out", "the prototype's case: coherence can't be computed live", no_coh)]
+    variants += [("this month blurred (σ = 20 m)", "how much it relies on fine texture and sharp edges in the month's radar", blur_month)]
+
+    rows = []
+    for label, why, change in variants:
+        cm, iou = confusion(model, ds, change)
+        rows.append((label, why, iou, float(iou[cm.sum(1) > 0].mean())))
+        print(f"{label.replace('→', '->').replace('σ', 'sigma'):34s} mIoU {rows[-1][3]:.3f}", flush=True)
+    base, base_m = rows[0][2], rows[0][3]
+
+    names = [c.replace("_", " ") for c in CLASSES]
+    md = [f"# What `{name}` relies on: validation IoU with one part of its input taken away",
+          "", f"12 validation sites, real monthly labels only. Each row replaces one part of the input (see the second "
+          "column); the numbers are the change in IoU against the full input, so **more negative = relied on more**. "
+          "Baseline IoU in the first row.", "",
+          "| Taken away | What it tests | mIoU | " + " | ".join(names) + " | Hit hardest |",
+          "|---" * (len(names) + 4) + "|"]
+    for label, why, iou, m in rows:
+        if label.startswith("everything"):
+            cells = [f"{m:.3f}"] + [f"{v:.3f}" for v in iou] + ["–"]
+        else:
+            d = iou - base
+            worst = [f"{names[i]} {d[i]:+.2f}" for i in np.argsort(d)[:2] if d[i] < -0.01]
+            cells = [f"{m - base_m:+.3f}"] + [f"{v:+.3f}" for v in d] + [", ".join(worst) or "nothing (all within 0.01)"]
+        md.append(f"| {label} | {why} | " + " | ".join(cells) + " |")
+    open(f"{out}/ablation_{name}.md", "w", encoding="utf-8").write("\n".join(md) + "\n")
+
+    delta = np.array([[m - base_m] + list(iou - base) for _, _, iou, m in rows[1:]])
+    lim = max(0.05, float(np.abs(delta).max()))
+    fig, ax = plt.subplots(figsize=(12, 0.6 * len(delta) + 1.8), layout="constrained")
+    ax.imshow(delta, cmap="RdBu", norm=TwoSlopeNorm(0, -lim, lim), aspect="auto")   # red = worse without it, grey 0, blue = better
+    for (i, j), v in np.ndenumerate(delta):
+        ax.text(j, i, f"{v:+.2f}", ha="center", va="center", fontsize=9, color="white" if abs(v) > 0.6 * lim else "black")
+    ax.set_xticks(range(len(names) + 1), ["mIoU"] + names, rotation=30, ha="right")
+    ax.set_yticks(range(len(delta)), [r[0] for r in rows[1:]])
+    ax.set_title(f"{name}: change in validation IoU when one input is taken away (red = relied on)")
+    fig.savefig(f"{out}/ablation_{name}.png", dpi=110)
+    print(f"saved {out}/ablation_{name}.md and .png")
 
 
 def show_scores(paths):
@@ -222,6 +340,9 @@ def main():
         return
     if "--rescore" in args:
         rescore()
+        return
+    if "--ablation" in args:
+        ablation(args[args.index("--ablation") + 1])
         return
     only = {int(i) for i in args[args.index("--only") + 1].split(",")} if "--only" in args else None
     exp = args[args.index("--exp") + 1] if "--exp" in args else None
