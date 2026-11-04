@@ -40,6 +40,38 @@ def scale_radar(radar):
     return out
 
 
+# SSL4EO-S12: a ResNet-50 pretrained (MoCo, self-supervised) on millions of Sentinel-1 VV/VH images; URL and band
+# statistics (dB) as in torchgeo's ResNet50_Weights.SENTINEL1_GRD_MOCO
+SSL4EO_URL = ("https://hf.co/torchgeo/resnet50_sentinel1_all_moco/resolve/e79862c667853c10a709bdd77ea8ffbad0e0f1cf/"
+              "resnet50_sentinel1_all_moco-906e4356.pth")
+SSL4EO_MEAN, SSL4EO_STD = (-12.59, -20.26), (5.26, 5.91)
+
+
+def ssl4eo_input(model):
+    """Puts a fixed step in front of the model: our 0..1 radar channels (this month and, with context, the yearly median)
+    back to dB, then normalised as in SSL4EO-S12 pretraining. It has no weights, so it is added again whenever such a
+    model is built (training, rescore, prototype)."""
+    a, b = [], []
+    for c in range(model.encoder.conv1.in_channels):
+        lo, hi = (VV_RANGE, VH_RANGE)[c % 2]
+        a.append((hi - lo) / SSL4EO_STD[c % 2] if c < 4 else 1.0)       # channels after the 4 radar ones: unchanged
+        b.append((lo - SSL4EO_MEAN[c % 2]) / SSL4EO_STD[c % 2] if c < 4 else 0.0)
+    a, b = torch.tensor(a).view(1, -1, 1, 1), torch.tensor(b).view(1, -1, 1, 1)
+    model.register_forward_pre_hook(lambda m, args: (args[0] * a.to(args[0]) + b.to(args[0]),))
+    return model
+
+
+def ssl4eo(model):
+    """Loads the SSL4EO-S12 weights into a ResNet-50 encoder. Its first layer was trained on 2 channels (VV, VH); with
+    context the yearly median is the same quantity, so it gets a copy, and all are halved to keep the signal strength."""
+    n = model.encoder.conv1.in_channels
+    assert n in (2, 4), "SSL4EO is set up for radar (2 channels) or radar + context (4)"
+    weights = torch.hub.load_state_dict_from_url(SSL4EO_URL, map_location="cpu")
+    weights["conv1.weight"] = torch.cat([weights["conv1.weight"]] * (n // 2), 1) / (n // 2)
+    model.encoder.load_state_dict(weights, strict=True)               # encoder only (no classifier head); any mismatch is an error
+    return ssl4eo_input(model)
+
+
 def _blur(x, sigma):
     """Gaussian blur of each band of x, shape (bands, H, W), done as two 1-D passes."""
     r = max(1, int(3 * sigma))

@@ -31,8 +31,8 @@ NOTEBOOK = "02_train.ipynb"
 
 # The queue, one list per experiment (= folder under experiments/). Each entry changes some settings of the notebook's
 # first code cell. Order = what runs first; the numbers count across all experiments, for --only.
-# Settings you can change: MONTHLY_ONLY, ARCH, PRETRAINED, CONTEXT, AGREE, OVERSAMPLE, SPREAD, COHERENCE, FILTER, YEARS,
-# SEED, EPOCHS, BATCH, LR, QUANTIZE.
+# Settings you can change: MONTHLY_ONLY, ARCH, ENCODER, SSL4EO, PRETRAINED, CONTEXT, AGREE, OVERSAMPLE, SPREAD, COHERENCE,
+# FILTER, YEARS, SEED, EPOCHS, BATCH, LR, QUANTIZE.
 QUEUES = {
     "exp1_data": [                                # what the data does: sites vs years, label filter, radar filters
     dict(YEARS=(2024,), SEED=0),                  # 0  sites effect: 21 sites, 2024 only (about the same steps as the old runs)
@@ -90,6 +90,19 @@ QUEUES = {
     "exp6_spread": [
     dict(CONTEXT=True, AGREE=True, SPREAD=True, QUANTIZE=False, SEED=0),      # 30
     dict(CONTEXT=True, AGREE=True, SPREAD=True, QUANTIZE=False, SEED=1),      # 31
+    ],
+    # exp4 with a DeepLabV3+ decoder instead of the U-Net one: the only change
+    "exp7_deeplab": [
+    dict(ARCH="DeepLabV3Plus", CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=0),   # 32
+    dict(ARCH="DeepLabV3Plus", CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=1),   # 33
+    ],
+    # exp4 with a ResNet-50 encoder, from scratch and from SSL4EO-S12 (self-supervised on Sentinel-1): scratch is the
+    # control, so "pretraining helped" is not confused with "a bigger encoder helped"
+    "exp8_ssl4eo": [
+    dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=0),               # 34  ResNet-50, scratch
+    dict(ENCODER="resnet50", SSL4EO=True, CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=0),  # 35  ResNet-50, SSL4EO
+    dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=1),               # 36
+    dict(ENCODER="resnet50", SSL4EO=True, CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=1),  # 37
     ],
 }
 EXPERIMENTS = [dict(e, EXPERIMENT=x) for x, runs in QUEUES.items() for e in runs]
@@ -159,12 +172,15 @@ def load_run(weights, channels):
     import segmentation_models_pytorch as smp
     import torch
     from lulc import CLASSES
+    from lulc import ssl4eo_input
     name = os.path.basename(weights)[:-3]
-    arch = smp.UnetPlusPlus if "_upp" in name else smp.Unet
+    arch = smp.UnetPlusPlus if "_upp" in name else smp.DeepLabV3Plus if "_dlv3p" in name else smp.Unet
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = arch("resnet34", encoder_weights=None, in_channels=channels, classes=len(CLASSES)).to(device)
+    model = arch("resnet50" if "_r50" in name else "resnet34", encoder_weights=None, in_channels=channels, classes=len(CLASSES))
+    if "_ssl4eo" in name:
+        model = ssl4eo_input(model)                            # the input step it was trained with (it has no weights)
     model.load_state_dict(torch.load(weights, map_location=device))
-    return model.eval()
+    return model.to(device).eval()
 
 
 def confusion(model, ds, change=None):

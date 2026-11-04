@@ -52,12 +52,19 @@ def init_ee():
 
 
 def load_model(path=WEIGHTS):
-    """The weights say how many input channels the model takes: 4 = radar + context, 6 = also the yearly spread."""
+    """The weights say how the model is built: input channels (4 = radar + context, 6 = also the yearly spread),
+    encoder (ResNet-34 or -50) and decoder (U-Net or DeepLabV3+). An SSL4EO model also needs its fixed input step,
+    which has no weights: its file name says so (_ssl4eo, as the training run names it)."""
+    from lulc import ssl4eo_input
     weights = torch.load(path, map_location=device)
     channels = weights["encoder.conv1.weight"].shape[1]
-    model = smp.Unet("resnet34", encoder_weights=None, in_channels=channels, classes=len(CLASSES)).to(device)
+    encoder = "resnet50" if "encoder.layer1.0.conv3.weight" in weights else "resnet34"   # only ResNet-50 blocks have a conv3
+    arch = smp.DeepLabV3Plus if any(k.startswith("decoder.aspp") for k in weights) else smp.Unet
+    model = arch(encoder, encoder_weights=None, in_channels=channels, classes=len(CLASSES))
+    if "_ssl4eo" in os.path.basename(path):
+        model = ssl4eo_input(model)
     model.load_state_dict(weights)
-    return model.eval()
+    return model.to(device).eval()
 
 
 def months_from(start):
