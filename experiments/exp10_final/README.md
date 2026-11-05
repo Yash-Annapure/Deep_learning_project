@@ -37,5 +37,9 @@ pick an epoch). Two seeds. Any change suggested by the exp6-9 pictures is made b
   4 countryside, section 14). Both groups are reported separately as well as together, so the gain from the new
   regions' training data shows where it was aimed.
 - The validation scores of the final model are not reported as results (validation is in its training data).
+- **Added 2026-11-05, before the final model finished and before any holdout score:** exp11 decides, with the 29-site
+  models, whether the prototype averages the final model's 2 seeds, 8 views of the image and neighbouring months. If
+  it does, the prototype uses the final model (seed 0, plus seed 1 if exp11 rule 1 passes) with what exp11 keeps,
+  instead of seed 0 alone; the holdout is then also scored with `averaging.py holdout` (all 12 combinations reported).
 
 **Results:** pending.

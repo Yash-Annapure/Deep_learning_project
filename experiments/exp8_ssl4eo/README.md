@@ -53,4 +53,8 @@ water (0.26 / 0.52 vs 0.72 / 0.65), the class the prototype's flood examples dep
 not decide that, and the test sites have been looked at too often to decide it either, so rule 4 lets new data decide.
 The flooded vegetation gain from SSL4EO (+0.093 over exp4) is the largest single-class gain of exp6-9.
 
-Tiebreak (rule 4): pending.
+**Tiebreak (rule 4), mean of 2 seeds on all 62 `final` sites:** ResNet-50 from scratch **0.392**, SSL4EO 0.386.
+Scratch trains the final model (exp10, queue entries 38-39). The gap is again 0.006, now the other way, so on
+mIoU the two are equal; the rule was set before the scores, and scratch also keeps the better test water. Both
+score about 0.07 lower here than on the validation sites (0.461 / 0.467): this is what the 29 tropical sites alone
+give on places unlike them, the "before" number for the final model, whose holdout includes 8 such places.

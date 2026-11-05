@@ -10,11 +10,13 @@ does the same for every place in DEMOS.
 Settings through environment variables: EE_PROJECT (Google Cloud project for Earth Engine) and MODEL_WEIGHTS.
 """
 import argparse
+import functools
 import gzip
 import io
 import json
 import os
 import pickle
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import ee
@@ -64,7 +66,28 @@ def load_model(path=WEIGHTS):
     if "_ssl4eo" in os.path.basename(path):
         model = ssl4eo_input(model)
     model.load_state_dict(weights)
+    model.weights_path = path                                          # each run records which model made it
     return model.to(device).eval()
+
+
+@functools.lru_cache
+def training_sites(weights=WEIGHTS):
+    """The sites a model learned from, as (name, lat, lon, what it is): SITES in 01_data_export.ipynb (in git, unlike
+    data/sites.csv), role train, plus val and final for the final model (its run name contains _final)."""
+    roles = {"train", "val", "final"} if "_final" in os.path.basename(weights) else {"train"}
+    src = next("".join(c["source"]) for c in json.load(open("01_data_export.ipynb", encoding="utf-8"))["cells"]
+               if "".join(c["source"]).startswith("PROJECT ="))
+    rows = re.findall(r'\("(\w+)",\s*(-?[\d.]+),\s*(-?[\d.]+),\s*"(\w+)"\),[ \t]*(?:#[ \t]*(.*))?', src)
+    return [(n, float(la), float(lo), what.strip()) for n, la, lo, r, what in rows if r in roles]
+
+
+def familiarity(lat, lon, sites):
+    """How close a place is to what the model learned from: (km to the nearest training site, its name, what it is).
+    Distance is only a rough guide: a far place can look like a training site, a near one can differ."""
+    def km(la, lo):
+        p1, p2, dl = np.radians(lat), np.radians(la), np.radians(lo - lon)
+        return 6371 * 2 * np.arcsin(np.sqrt(np.sin((p2 - p1) / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2))
+    return min((float(km(la, lo)), name, what) for name, la, lo, what in sites)
 
 
 def months_from(start):
@@ -200,7 +223,7 @@ def run(lat, lon, start, model, workers=14, progress=lambda done: None):
     maps = [predict(model, radar, context) if radar is not None else None for radar, _ in fetched]
     return {"months": [f"{y}-{m:02d}" for y, m in months], "maps": maps, **summarise(maps),
             "scenes": [n for _, n in fetched], "pass_dir": pass_dir, "lat": lat, "lon": lon,
-            "wc": wc, "dw": dw, **second_opinion(maps, wc)}
+            "weights": getattr(model, "weights_path", WEIGHTS), "wc": wc, "dw": dw, **second_opinion(maps, wc)}
 
 
 def summarise(maps):
@@ -377,6 +400,8 @@ def check(result):
     a, b = np.zeros((1, 1), np.uint8), np.ones((1, 1), np.uint8)
     cleaned = despike([a, b, a, None, b, b])
     assert int(cleaned[1][0, 0]) == 0 and cleaned[3] is None and int(cleaned[4][0, 0]) == 1   # blip gone, lasting change kept
+    exp4, final = training_sites("x/hybrid_ctx_agree.pt"), training_sites("x/hybrid_r50_ctx_agree_final.pt")
+    assert 25 <= len(exp4) < len(final) and familiarity(*exp4[0][1:3], exp4)[:2] == (0.0, exp4[0][0])   # a site is 0 km from itself
     crop, grass = (np.full((2, 2), CLASSES.index(c), np.uint8) for c in ("crops", "low_vegetation"))
     assert second_opinion([crop] * CROP_MONTHS + [grass] * 9, grass)["typical"][0, 0] == CLASSES.index("crops")
     assert second_opinion([crop] * (CROP_MONTHS - 1) + [grass] * 9, grass)["typical"][0, 0] == CLASSES.index("low_vegetation")

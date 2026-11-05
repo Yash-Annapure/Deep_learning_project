@@ -133,8 +133,18 @@ have = [i for i, mp in enumerate(res["maps"]) if mp is not None]
 
 # ---- the answer first: what changed, then the months to look at ----
 st.title(res.get("place", f"{res['lat']:.4f}, {res['lon']:.4f}"))
+sites = P.training_sites(res.get("weights", P.WEIGHTS))           # runs saved before this was recorded: the default model
 st.caption(f"{res['lat']:.4f}, {res['lon']:.4f} · 10 km × 10 km · {res['months'][0]} to {res['months'][-1]} · "
-           f"Sentinel-1 radar only, U-Net trained on 50 sites in Africa and Asia")
+           f"Sentinel-1 radar only, model trained on {len(sites)} sites")
+km, near, what = P.familiarity(res["lat"], res["lon"], sites)
+nearest = f"Nearest training site: **{near.replace('_', ' ')}**{f' ({what})' if what else ''}, {km:,.0f} km away."
+if km < 100:
+    st.success(f"Close to the training data. {nearest}")
+elif km < 500:
+    st.info(f"In a region the model has learned from. {nearest}")
+else:
+    st.warning(f"Far from all training data, so the maps may be less reliable here. {nearest} "
+               "Distance is only a rough guide: a far place can still look like one the model knows.")
 cols = st.columns(4)
 for col, (c, pts) in zip(cols, P.biggest_changes(res)):
     i = P.CLASSES.index(c)
