@@ -111,6 +111,14 @@ QUEUES = {
     dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=1),               # 36
     dict(ENCODER="resnet50", SSL4EO=True, CONTEXT=True, AGREE=True, QUANTIZE=False, SEED=1),  # 37
     ],
+    # the final model (exp10 README): train + val + final sites, last epoch kept, 2 seeds. Only the setup that wins
+    # exp8 rule 4 (--tiebreak) is run: 38-39 if ResNet-50 from scratch wins, 40-41 if SSL4EO wins
+    "exp10_final": [
+    dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, FINAL=True, SEED=0),               # 38  scratch
+    dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, FINAL=True, SEED=1),               # 39
+    dict(ENCODER="resnet50", SSL4EO=True, CONTEXT=True, AGREE=True, QUANTIZE=False, FINAL=True, SEED=0),  # 40  SSL4EO
+    dict(ENCODER="resnet50", SSL4EO=True, CONTEXT=True, AGREE=True, QUANTIZE=False, FINAL=True, SEED=1),  # 41
+    ],
 }
 EXPERIMENTS = [dict(e, EXPERIMENT=x) for x, runs in QUEUES.items() for e in runs]
 
