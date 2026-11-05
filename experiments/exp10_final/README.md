@@ -3,17 +3,18 @@
 **What it is:** after exp6-9 have chosen the setup on validation, that setup is trained once more on all the data that
 is not held out, and then scored once on the holdout sites. Written down before any of exp6-10's results exist.
 
-**Training data:** about 97 sites:
+**Training data:** about 105 sites:
 - train (29);
 - val (12): bangweulu and gao bring kinds of place the training sites lack, and new kinds of place gave the largest
   gains in exp4;
-- about 56 sites with role `final`, one year each, chosen for kinds of place the data lacks, screened with Dynamic
+- about 64 sites with role `final`, one year each, chosen for kinds of place the data lacks, screened with Dynamic
   World and checked on satellite view (`01_data_export.ipynb`, sections 13 and 14):
   - 5 in the tropics: oil palm next to forest (Riau, Sumatra), rice outside Asia (Lac Alaotra, Madagascar), irrigated
     fields against desert (Nile valley), steep hills (Huye, Rwanda), lake shore farming (Lake Tana, Ethiopia);
   - about 51 in Europe and the Americas (added 2026-11-05; the first 7 aimed at the weaknesses in
     `experiments/new_regions_diagnosis.md`): all 50 earlier sites lie between 27 N and 25 S, so the
-    model had never seen a temperate place, while the prototype is meant to work at any coordinates.
+    model had never seen a temperate place, while the prototype is meant to work at any coordinates;
+  - 8 in East Asia, Australia, temperate southern Africa and Anatolia, where the map was still empty after that.
 
   `final` sites are trained on by this model only. Before that they are scored once, to break the exp8 tie
   between ResNet-50 from scratch and from SSL4EO (exp8 rule 4); no other decision uses them.
