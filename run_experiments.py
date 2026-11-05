@@ -20,6 +20,7 @@
                                                   final model trains on them
     uv run python run_experiments.py --final      exp8 rule 4 (the tiebreak above, once) and then the winning setup's
                                                   final-model runs (exp10), with no step in between
+    uv run python run_experiments.py --lovasz     exp12's rule (after --only 42,43): the final model with Lovász (44-45) if it passes
 
 To keep it going when your browser or connection drops:
     nohup uv run python -u run_experiments.py > queue.log 2>&1 &        then: tail -f queue.log
@@ -120,6 +121,14 @@ QUEUES = {
     dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, FINAL=True, SEED=1),               # 39
     dict(ENCODER="resnet50", SSL4EO=True, CONTEXT=True, AGREE=True, QUANTIZE=False, FINAL=True, SEED=0),  # 40  SSL4EO
     dict(ENCODER="resnet50", SSL4EO=True, CONTEXT=True, AGREE=True, QUANTIZE=False, FINAL=True, SEED=1),  # 41
+    ],
+    # the final model's setup (ResNet-50 from scratch) with the Lovász-softmax loss added (exp12 README): first on the
+    # 29 train sites (42-43); the final model with it (44-45) only if exp12's rule passes (--lovasz)
+    "exp12_lovasz": [
+    dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, LOVASZ=True, SEED=0),               # 42  29 sites
+    dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, LOVASZ=True, SEED=1),               # 43
+    dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, LOVASZ=True, FINAL=True, SEED=0),   # 44  final model
+    dict(ENCODER="resnet50", CONTEXT=True, AGREE=True, QUANTIZE=False, LOVASZ=True, FINAL=True, SEED=1),   # 45
     ],
 }
 EXPERIMENTS = [dict(e, EXPERIMENT=x) for x, runs in QUEUES.items() for e in runs]
@@ -427,6 +436,25 @@ def final_choice():
     return setups[winner]
 
 
+def lovasz_choice():
+    """exp12's rule, as written in its README before the results: the 29-site runs with and without Lovász (2 seeds
+    each) scored on the 62 final sites, and the queue entries of the Lovász final model (44-45) if it passes, else none."""
+    import numpy as np
+    runs = {"without": [("experiments/exp8_ssl4eo", "hybrid_r50_ctx_agree" + s) for s in ("", "_seed1")],
+            "with": [("experiments/exp12_lovasz", "hybrid_r50_ctx_agree_lovasz" + s) for s in ("", "_seed1")]}
+    if not all("final_miou" in json.load(open(results_file(n, out))) for out, n in runs["with"]):
+        holdout([f"{out}/weights/{n}.pt" for rs in runs.values() for out, n in rs], role="final")   # all 4 side by side
+    r = {k: [json.load(open(results_file(n, out))) for out, n in rs] for k, rs in runs.items()}
+    miou = {k: float(np.mean([x["final_miou"] for x in rs])) for k, rs in r.items()}
+    iou = {k: np.mean([x["final_iou"] for x in rs], axis=0) for k, rs in r.items()}
+    drop = float(np.min(iou["with"] - iou["without"]))
+    met = miou["with"] >= miou["without"] + 0.010 and drop >= -0.05
+    print(f"exp12 rule, mean mIoU on the final sites: without Lovász {miou['without']:.3f}, with {miou['with']:.3f} "
+          f"({miou['with'] - miou['without']:+.3f}, largest class drop {drop:+.3f})  ->  "
+          + ("met: the final model with Lovász trains (queue entries 44, 45)" if met else "not met: no final model with Lovász"), flush=True)
+    return {44, 45} if met else set()
+
+
 def show_scores(paths):
     print("\nSUMMARY (validation = the numbers to decide with, test = the final exam)")
     print(f"{'run':34s}{'val mIoU':>10s}{'val water':>11s}{'test mIoU':>11s}{'test water':>12s}")
@@ -441,7 +469,8 @@ def show_scores(paths):
 def main():
     args = sys.argv[1:]
     unknown = [a for a in args if a.startswith("--") and a not in
-               ("--one", "--smoke", "--rescore", "--ablation", "--crf", "--holdout", "--tiebreak", "--final", "--only", "--exp", "--list")]
+               ("--one", "--smoke", "--rescore", "--ablation", "--crf", "--holdout", "--tiebreak", "--final", "--lovasz",
+                "--only", "--exp", "--list")]
     if unknown:                                                # an unknown option must not fall through to running the queue
         sys.exit(f"unknown option(s) {unknown}; see the top of this file")
     smoke = "--smoke" in args
@@ -465,6 +494,8 @@ def main():
         return
     if "--final" in args:
         only = final_choice()
+    elif "--lovasz" in args:
+        only = lovasz_choice()
     else:
         only = {int(i) for i in args[args.index("--only") + 1].split(",")} if "--only" in args else None
     exp = args[args.index("--exp") + 1] if "--exp" in args else None

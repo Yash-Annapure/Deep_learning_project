@@ -41,5 +41,7 @@ pick an epoch). Two seeds. Any change suggested by the exp6-9 pictures is made b
   models, whether the prototype averages the final model's 2 seeds, 8 views of the image and neighbouring months. If
   it does, the prototype uses the final model (seed 0, plus seed 1 if exp11 rule 1 passes) with what exp11 keeps,
   instead of seed 0 alone; the holdout is then also scored with `averaging.py holdout` (all 12 combinations reported).
+- **Added 2026-11-05, same conditions:** if exp12's rule passes, the final model with the Lovász loss (exp12, entries
+  44-45) takes this model's place in the prototype; this model is still scored on the holdout next to it.
 
 **Results:** pending.
