@@ -18,6 +18,8 @@
     uv run python run_experiments.py --tiebreak <weights.pt> [<weights.pt> ...]
                                                   exp8 rule 4, once: the same on the 6 final-model sites, before the
                                                   final model trains on them
+    uv run python run_experiments.py --final      exp8 rule 4 (the tiebreak above, once) and then the winning setup's
+                                                  final-model runs (exp10), with no step in between
 
 To keep it going when your browser or connection drops:
     nohup uv run python -u run_experiments.py > queue.log 2>&1 &        then: tail -f queue.log
@@ -409,6 +411,22 @@ def holdout(weights_list, role="holdout"):
     print("\n".join(md))
 
 
+def final_choice():
+    """exp8 rule 4, applied as written: both ResNet-50 setups (2 seeds each) scored once on the final sites (as
+    --tiebreak; a rerun reuses those scores), and the queue entries of the setup with the higher mean mIoU there."""
+    import numpy as np
+    out = "experiments/exp8_ssl4eo"
+    setups = {"hybrid_r50_ctx_agree": {38, 39}, "hybrid_r50_ssl4eo_ctx_agree": {40, 41}}      # exp10 queue entries
+    runs = [n + s for n in setups for s in ("", "_seed1")]
+    if not all("final_miou" in json.load(open(results_file(r, out))) for r in runs):
+        holdout([f"{out}/weights/{r}.pt" for r in runs], role="final")
+    mean = {n: float(np.mean([json.load(open(results_file(n + s, out)))["final_miou"] for s in ("", "_seed1")])) for n in setups}
+    winner = max(setups, key=lambda n: (mean[n], "ssl4eo" not in n))                          # an exact tie goes to scratch
+    print("exp8 rule 4, mean mIoU on the final sites: " + ", ".join(f"{n} {m:.3f}" for n, m in mean.items())
+          + f"  ->  {winner} trains the final model (queue entries {sorted(setups[winner])})", flush=True)
+    return setups[winner]
+
+
 def show_scores(paths):
     print("\nSUMMARY (validation = the numbers to decide with, test = the final exam)")
     print(f"{'run':34s}{'val mIoU':>10s}{'val water':>11s}{'test mIoU':>11s}{'test water':>12s}")
@@ -423,7 +441,7 @@ def show_scores(paths):
 def main():
     args = sys.argv[1:]
     unknown = [a for a in args if a.startswith("--") and a not in
-               ("--one", "--smoke", "--rescore", "--ablation", "--crf", "--holdout", "--tiebreak", "--only", "--exp", "--list")]
+               ("--one", "--smoke", "--rescore", "--ablation", "--crf", "--holdout", "--tiebreak", "--final", "--only", "--exp", "--list")]
     if unknown:                                                # an unknown option must not fall through to running the queue
         sys.exit(f"unknown option(s) {unknown}; see the top of this file")
     smoke = "--smoke" in args
@@ -445,7 +463,10 @@ def main():
     if "--tiebreak" in args:
         holdout(args[args.index("--tiebreak") + 1:], role="final")
         return
-    only = {int(i) for i in args[args.index("--only") + 1].split(",")} if "--only" in args else None
+    if "--final" in args:
+        only = final_choice()
+    else:
+        only = {int(i) for i in args[args.index("--only") + 1].split(",")} if "--only" in args else None
     exp = args[args.index("--exp") + 1] if "--exp" in args else None
     todo = [(i, e) for i, e in enumerate(EXPERIMENTS)
             if (only is None or i in only) and (exp is None or e["EXPERIMENT"] == exp)]
