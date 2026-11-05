@@ -26,9 +26,10 @@ entries 34-37 in `run_experiments.py`):
    seed was seen, it is mildly optimistic; the holdout shows whether the choice holds.
 4. **Tiebreak on fresh sites** (added after all 4 runs, before the 6 `final` sites were exported; it replaces the
    last sentence of rule 3): see the conclusion for why. Both setups (the 29-site models, 2 seeds each) are scored
-   once on the 6 `final` sites, which no model has seen (`run_experiments.py --tiebreak`). The setup with the higher
-   mean mIoU there trains the final model. The sites then join the final model's training data; their scores are
-   reported, and the 6 holdout sites stay untouched.
+   once on all `final` sites, which no model has seen (`run_experiments.py --tiebreak`): 5 in the tropics and, added
+   on 2026-11-05 before anything was scored, about 44 in Europe and the Americas, where neither model has seen any
+   place at all. The setup with the higher mean mIoU there trains the final model. The sites then join the final
+   model's training data; their scores are reported, and the holdout sites stay untouched.
 
 **Results** (mean of 2 seeds; validation = the same 12 sites; test = the 3 development sites):
 
