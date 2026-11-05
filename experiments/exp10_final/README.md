@@ -3,15 +3,16 @@
 **What it is:** after exp6-9 have chosen the setup on validation, that setup is trained once more on all the data that
 is not held out, and then scored once on the holdout sites. Written down before any of exp6-10's results exist.
 
-**Training data:** about 90 sites:
+**Training data:** about 97 sites:
 - train (29);
 - val (12): bangweulu and gao bring kinds of place the training sites lack, and new kinds of place gave the largest
   gains in exp4;
-- about 49 sites with role `final`, one year each, chosen for kinds of place the data lacks, screened with Dynamic
+- about 56 sites with role `final`, one year each, chosen for kinds of place the data lacks, screened with Dynamic
   World and checked on satellite view (`01_data_export.ipynb`, sections 13 and 14):
   - 5 in the tropics: oil palm next to forest (Riau, Sumatra), rice outside Asia (Lac Alaotra, Madagascar), irrigated
     fields against desert (Nile valley), steep hills (Huye, Rwanda), lake shore farming (Lake Tana, Ethiopia);
-  - about 44 in Europe and the Americas (added 2026-11-05): all 50 earlier sites lie between 27 N and 25 S, so the
+  - about 51 in Europe and the Americas (added 2026-11-05; the first 7 aimed at the weaknesses in
+    `experiments/new_regions_diagnosis.md`): all 50 earlier sites lie between 27 N and 25 S, so the
     model had never seen a temperate place, while the prototype is meant to work at any coordinates.
 
   `final` sites are trained on by this model only. Before that they are scored once, to break the exp8 tie

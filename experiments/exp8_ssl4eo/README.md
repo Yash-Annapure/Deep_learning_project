@@ -27,7 +27,7 @@ entries 34-37 in `run_experiments.py`):
 4. **Tiebreak on fresh sites** (added after all 4 runs, before the 6 `final` sites were exported; it replaces the
    last sentence of rule 3): see the conclusion for why. Both setups (the 29-site models, 2 seeds each) are scored
    once on all `final` sites, which no model has seen (`run_experiments.py --tiebreak`): 5 in the tropics and, added
-   on 2026-11-05 before anything was scored, about 44 in Europe and the Americas, where neither model has seen any
+   on 2026-11-05 before anything was scored, about 51 in Europe and the Americas, where neither model has seen any
    place at all. The setup with the higher mean mIoU there trains the final model. The sites then join the final
    model's training data; their scores are reported, and the holdout sites stay untouched.
 
