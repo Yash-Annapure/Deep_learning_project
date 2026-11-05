@@ -22,4 +22,15 @@ the CRF if one of them raises validation mIoU by at least **0.010** over the sam
 by more than 0.05. Picking the better of two settings on validation is mildly optimistic; the holdout score shows
 whether it holds.
 
-**Results:** pending.
+**Results** (validation, the 12 sites, exp4 `hybrid_ctx_agree` seed 0; `crf_hybrid_ctx_agree.md`):
+
+| CRF | mIoU | water | trees | low veg | flooded veg | crops | built | bare |
+|---|---|---|---|---|---|---|---|---|
+| none (argmax) | 0.455 | 0.547 | 0.332 | 0.394 | 0.397 | 0.357 | 0.791 | 0.364 |
+| mild (7 px, theta_xy 3) | 0.456 | 0.544 | 0.327 | 0.396 | 0.402 | 0.358 | 0.793 | 0.371 |
+| strong (11 px, theta_xy 5) | 0.454 | 0.536 | 0.320 | 0.396 | 0.403 | 0.357 | 0.793 | 0.375 |
+
+**Conclusion against the rule: not met** (+0.001 and −0.001; the bar is +0.010). The CRF smooths, but the model's
+output is already about as smooth as the median radar's boundaries allow: bare and flooded vegetation gain a little,
+trees and water lose a little, and the stronger setting moves further in the same direction. The prototype uses no
+CRF. Temporal post-processing (removing one-month flickers) is what the prototype uses instead.

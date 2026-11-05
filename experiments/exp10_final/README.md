@@ -10,7 +10,8 @@ is not held out, and then scored once on the 6 holdout sites. Written down befor
 - 6 sites with role `final`, chosen for kinds of place the data lacks and checked on satellite view: oil palm next to
   forest (Riau, Sumatra), orchards between rice fields (Mekong Delta), rice outside Asia (Lac Alaotra, Madagascar),
   irrigated fields against desert (Nile valley), steep hills (Huye, Rwanda), highland farming (Lake Tana, Ethiopia).
-  `final` sites are used by this model only; exp6-9 never see them, so their comparisons stay fair.
+  `final` sites are trained on by this model only. Before that they are scored once, to break the exp8 tie
+  between ResNet-50 from scratch and from SSL4EO (exp8 rule 4); no other decision uses them.
 
 **Setup:** the best setup by the rules of exp6-9 (exp4's if none of them passes), with `FINAL=True`: trained on
 `("train", "val", "final")`, 15 epochs, and the **last epoch kept** (validation is in the training data, so it cannot
@@ -20,8 +21,9 @@ pick an epoch). Two seeds. Any change suggested by the exp6-9 pictures is made b
 - The prototype uses the final model, seed 0, whatever the holdout says. The holdout chooses nothing; it only
   measures.
 - The holdout is scored once (`run_experiments.py --holdout`), for: exp4 seed 0 (the current prototype, trained on
-  29 sites), the chosen setup trained on 29 sites if different, and the final model (both seeds). All numbers are
-  reported, including any that make the final model look worse.
+  29 sites), both exp8 ResNet-50 setups trained on 29 sites (the one exp8 rule 4 did not pick included, so the
+  report shows whether the tiebreak was right), and the final model (both seeds). All numbers are reported, including
+  any that make the final model look worse.
 - The validation scores of the final model are not reported as results (validation is in its training data).
 
 **Results:** pending.

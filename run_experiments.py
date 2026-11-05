@@ -15,6 +15,9 @@
                                                   that model's validation scores without and with the convolutional CRF
     uv run python run_experiments.py --holdout <weights.pt> [<weights.pt> ...]
                                                   THE FINAL EVALUATION, once at the very end: scores on the 6 holdout sites
+    uv run python run_experiments.py --tiebreak <weights.pt> [<weights.pt> ...]
+                                                  exp8 rule 4, once: the same on the 6 final-model sites, before the
+                                                  final model trains on them
 
 To keep it going when your browser or connection drops:
     nohup uv run python -u run_experiments.py > queue.log 2>&1 &        then: tail -f queue.log
@@ -368,28 +371,33 @@ def crf(weights):
     print("\n".join(md))
 
 
-def holdout(weights_list):
+def holdout(weights_list, role="holdout"):
     """The final evaluation, run ONCE at the very end: each model's IoU per class on the 6 holdout sites (never used for
     any decision), the same scoring as validation. Saved into each results file (holdout_miou, holdout_iou) and side
-    by side in experiments/holdout_results.md."""
+    by side in experiments/holdout_results.md. role="final" (--tiebreak): the same on the 6 final-model sites, once,
+    before the final model trains on them (exp8 rule 4)."""
     import numpy as np
     from lulc import CLASSES, LULCDataset
     names = [c.replace("_", " ") for c in CLASSES]
-    md = ["# Final evaluation on the 6 holdout sites (scored once)", "",
+    md = [f"# Scores on the 6 {role} sites (scored once)", "",
           "| Model | mIoU | " + " | ".join(names) + " |", "|---" * (len(names) + 2) + "|"]
+    datasets = {}                                              # one dataset per way of preparing the radar
     for w in weights_list:
         name = os.path.basename(w)[:-3]
-        ds = LULCDataset("holdout", **input_of(name))
+        key = tuple(input_of(name).items())
+        if key not in datasets:
+            datasets[key] = LULCDataset(role, **input_of(name))
+        ds = datasets[key]
         cm, iou = confusion(load_run(w, ds.channels), ds)
         m = float(iou[cm.sum(1) > 0].mean())
         f = results_file(name, os.path.dirname(os.path.dirname(w)))
         r = json.load(open(f)) if os.path.exists(f) else {}
-        r.update(holdout_miou=m, holdout_iou=iou.tolist())
+        r.update({f"{role}_miou": m, f"{role}_iou": iou.tolist()})
         os.makedirs(os.path.dirname(f), exist_ok=True)
         json.dump(r, open(f, "w"))
         md.append(f"| `{w}` | {m:.3f} | " + " | ".join(f"{v:.3f}" for v in iou) + " |")
-        print(f"{name:40s} holdout mIoU {m:.3f}", flush=True)
-    open("experiments/holdout_results.md", "w", encoding="utf-8").write("\n".join(md) + "\n")
+        print(f"{name:40s} {role} mIoU {m:.3f}", flush=True)
+    open(f"experiments/{role}_results.md", "w", encoding="utf-8").write("\n".join(md) + "\n")
     print("\n".join(md))
 
 
@@ -407,7 +415,7 @@ def show_scores(paths):
 def main():
     args = sys.argv[1:]
     unknown = [a for a in args if a.startswith("--") and a not in
-               ("--one", "--smoke", "--rescore", "--ablation", "--crf", "--holdout", "--only", "--exp", "--list")]
+               ("--one", "--smoke", "--rescore", "--ablation", "--crf", "--holdout", "--tiebreak", "--only", "--exp", "--list")]
     if unknown:                                                # an unknown option must not fall through to running the queue
         sys.exit(f"unknown option(s) {unknown}; see the top of this file")
     smoke = "--smoke" in args
@@ -425,6 +433,9 @@ def main():
         return
     if "--holdout" in args:
         holdout(args[args.index("--holdout") + 1:])
+        return
+    if "--tiebreak" in args:
+        holdout(args[args.index("--tiebreak") + 1:], role="final")
         return
     only = {int(i) for i in args[args.index("--only") + 1].split(",")} if "--only" in args else None
     exp = args[args.index("--exp") + 1] if "--exp" in args else None
