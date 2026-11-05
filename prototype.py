@@ -7,7 +7,8 @@ Engine or a model) and prints the tables.
     uv run python prototype.py --demos
 does the same for every place in DEMOS.
 
-Settings through environment variables: EE_PROJECT (Google Cloud project for Earth Engine) and MODEL_WEIGHTS.
+Settings through environment variables: EE_PROJECT (Google Cloud project for Earth Engine) and MODEL_WEIGHTS (one or
+more weights files, comma-separated: their answers are averaged).
 """
 import argparse
 import functools
@@ -27,7 +28,10 @@ import torch
 from lulc import CLASSES, COLORS, NODATA_RADAR, REMAP, missing, scale_radar
 
 PROJECT = os.environ.get("EE_PROJECT", "deep-learning-project-512013")
-WEIGHTS = os.environ.get("MODEL_WEIGHTS", "experiments/exp4_50sites/weights/hybrid_ctx_agree.pt")   # radar + context, 4 channels
+# the final model's 2 seeds (exp10), comma-separated: their class probabilities are averaged (exp11)
+WEIGHTS = os.environ.get("MODEL_WEIGHTS", "experiments/exp10_final/weights/hybrid_r50_ctx_agree_final.pt,"
+                                          "experiments/exp10_final/weights/hybrid_r50_ctx_agree_final_seed1.pt")
+OLD_WEIGHTS = "experiments/exp4_50sites/weights/hybrid_ctx_agree.pt"  # made the saved runs that do not record their model
 RUNS = "prototype_runs"
 # places with change to show, 12 months from June 2025 (Sentinel-1A and 1C both flying: the best coverage).
 # ponytail: coordinates picked from maps, check each square on satellite view before recording
@@ -53,28 +57,31 @@ def init_ee():
     ee.Initialize(project=PROJECT)
 
 
-def load_model(path=WEIGHTS):
-    """The weights say how the model is built: input channels (4 = radar + context, 6 = also the yearly spread),
-    encoder (ResNet-34 or -50) and decoder (U-Net or DeepLabV3+). An SSL4EO model also needs its fixed input step,
-    which has no weights: its file name says so (_ssl4eo, as the training run names it)."""
+def load_model(paths=WEIGHTS):
+    """A list of models, one per comma-separated weights file. The weights say how each is built: input channels
+    (4 = radar + context, 6 = also the yearly spread), encoder (ResNet-34 or -50) and decoder (U-Net or DeepLabV3+).
+    An SSL4EO model also needs its fixed input step, which has no weights: its file name says so (_ssl4eo)."""
     from lulc import ssl4eo_input
-    weights = torch.load(path, map_location=device)
-    channels = weights["encoder.conv1.weight"].shape[1]
-    encoder = "resnet50" if "encoder.layer1.0.conv3.weight" in weights else "resnet34"   # only ResNet-50 blocks have a conv3
-    arch = smp.DeepLabV3Plus if any(k.startswith("decoder.aspp") for k in weights) else smp.Unet
-    model = arch(encoder, encoder_weights=None, in_channels=channels, classes=len(CLASSES))
-    if "_ssl4eo" in os.path.basename(path):
-        model = ssl4eo_input(model)
-    model.load_state_dict(weights)
-    model.weights_path = path                                          # each run records which model made it
-    return model.to(device).eval()
+    models = []
+    for path in paths.split(","):
+        weights = torch.load(path, map_location=device)
+        channels = weights["encoder.conv1.weight"].shape[1]
+        encoder = "resnet50" if "encoder.layer1.0.conv3.weight" in weights else "resnet34"   # only ResNet-50 blocks have a conv3
+        arch = smp.DeepLabV3Plus if any(k.startswith("decoder.aspp") for k in weights) else smp.Unet
+        model = arch(encoder, encoder_weights=None, in_channels=channels, classes=len(CLASSES))
+        if "_ssl4eo" in os.path.basename(path):
+            model = ssl4eo_input(model)
+        model.load_state_dict(weights)
+        model.weights_path = path                                      # each run records which models made it
+        models.append(model.to(device).eval())
+    return models
 
 
 @functools.lru_cache
 def training_sites(weights=WEIGHTS):
     """The sites a model learned from, as (name, lat, lon, what it is): SITES in 01_data_export.ipynb (in git, unlike
     data/sites.csv), role train, plus val and final for the final model (its run name contains _final)."""
-    roles = {"train", "val", "final"} if "_final" in os.path.basename(weights) else {"train"}
+    roles = {"train", "val", "final"} if "_final" in os.path.basename(weights.split(",")[0]) else {"train"}
     src = next("".join(c["source"]) for c in json.load(open("01_data_export.ipynb", encoding="utf-8"))["cells"]
                if "".join(c["source"]).startswith("PROJECT ="))
     rows = re.findall(r'\("(\w+)",\s*(-?[\d.]+),\s*(-?[\d.]+),\s*"(\w+)"\),[ \t]*(?:#[ \t]*(.*))?', src)
@@ -182,21 +189,35 @@ def dynamic_world(region, grid, year, month):
 
 
 @torch.no_grad()
-def predict(model, radar_db, context):
-    """(2, H, W) radar in dB + (2 or 4, H, W) scaled context -> (H, W) class map. Scaled exactly like the training data,
-    padded to a multiple of 32. Pixels without radar get NO_DATA, so they never count in the shares."""
+def predict(models, radar_db, context):
+    """(2, H, W) radar in dB + (2 or 4, H, W) scaled context -> (C, H, W) class probabilities, the mean over the models
+    (exp11: the 2 seeds). Scaled exactly like the training data, padded to a multiple of 32. 0 where there is no radar."""
     h, w = radar_db.shape[1:]
     x = torch.from_numpy(np.concatenate([scale_radar(radar_db), context]))[None].to(device)
     x = torch.nn.functional.pad(x, (0, -w % 32, 0, -h % 32), mode="reflect")
     with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"):
-        out = model(x).argmax(1)[0, :h, :w].cpu().numpy().astype(np.uint8)
-    out[missing(radar_db)] = NO_DATA
-    return out
+        p = (sum(m(x).float().softmax(1) for m in models) / len(models))[0, :, :h, :w].cpu()
+    p[:, torch.from_numpy(missing(radar_db))] = 0
+    return p.half()
 
 
-def run(lat, lon, start, model, workers=14, progress=lambda done: None):
-    """The whole prototype: 12 maps, % per class each month, month-to-month change and first-to-last change (in points).
-    progress(n) is called as each of the 12 months arrives."""
+def to_maps(probs):
+    """Per month (C, H, W) probabilities, or None without radar -> (maps, smoothed maps), each a list of (H, W) class
+    maps or None: the most likely class, and the same after averaging.smooth (each month with the months before and
+    after, exp11: halves the false changes). NO_DATA where there is no radar (probabilities 0)."""
+    from averaging import smooth
+    have = [i for i, p in enumerate(probs) if p is not None]
+    p = torch.stack([probs[i] for i in have]).float()                 # (T, C, H, W), the months with radar
+    valid = p.sum(1) > 0
+    maps, smoothed = [None] * len(probs), [None] * len(probs)
+    for i, a, b, ok in zip(have, p.argmax(1).numpy(), smooth(p, valid).argmax(1).numpy(), valid.numpy()):
+        maps[i], smoothed[i] = (np.where(ok, m, NO_DATA).astype(np.uint8) for m in (a, b))
+    return maps, smoothed
+
+
+def run(lat, lon, start, models, workers=14, progress=lambda done: None):
+    """The whole prototype: 12 maps (raw, and smoothed over months: "smooth"), % per class each month, month-to-month
+    change and first-to-last change (in points). progress(n) is called as each of the 12 months arrives."""
     months = months_from(start)
     grid, region = make_grid(lat, lon)
     y0, m0 = months[0]
@@ -218,12 +239,13 @@ def run(lat, lon, start, model, workers=14, progress=lambda done: None):
     # plus its standard deviation for a model trained with spread (6 input channels)
     months_radar = np.stack([scale_radar(r) for r in radars])
     context = np.median(months_radar, axis=0)
-    if model.encoder.conv1.in_channels == 6:
+    if models[0].encoder.conv1.in_channels == 6:
         context = np.concatenate([context, months_radar.std(axis=0)])
-    maps = [predict(model, radar, context) if radar is not None else None for radar, _ in fetched]
-    return {"months": [f"{y}-{m:02d}" for y, m in months], "maps": maps, **summarise(maps),
+    maps, smoothed = to_maps([predict(models, radar, context) if radar is not None else None for radar, _ in fetched])
+    return {"months": [f"{y}-{m:02d}" for y, m in months], "maps": maps, "smooth": smoothed, **summarise(maps),
             "scenes": [n for _, n in fetched], "pass_dir": pass_dir, "lat": lat, "lon": lon,
-            "weights": getattr(model, "weights_path", WEIGHTS), "wc": wc, "dw": dw, **second_opinion(maps, wc)}
+            "weights": ",".join(getattr(m, "weights_path", "") for m in models), "wc": wc, "dw": dw,
+            **second_opinion(maps, wc)}
 
 
 def summarise(maps):
@@ -400,15 +422,23 @@ def check(result):
     a, b = np.zeros((1, 1), np.uint8), np.ones((1, 1), np.uint8)
     cleaned = despike([a, b, a, None, b, b])
     assert int(cleaned[1][0, 0]) == 0 and cleaned[3] is None and int(cleaned[4][0, 0]) == 1   # blip gone, lasting change kept
+    onehot = lambda c: torch.eye(len(CLASSES))[c][:, None, None].repeat(1, 1, 2)            # (C, 1, 2): both pixels class c
+    probs = [onehot(c) if c is not None else None for c in (0, 1, 0, None, 1, 1)]
+    probs[0][:, 0, 1] = 0                                                                     # no radar at one pixel in month 0
+    raw, sm = to_maps(probs)
+    assert [m if m is None else int(m[0, 0]) for m in raw] == [0, 1, 0, None, 1, 1] and raw[0][0, 1] == NO_DATA
+    assert int(sm[1][0, 0]) == 0 and sm[1][0, 1] == 1 and sm[3] is None and int(sm[5][0, 0]) == 1   # blip gone where both neighbours have radar
+    assert [m is None for m in result.get("smooth", result["maps"])] == [m is None for m in result["maps"]]
     exp4, final = training_sites("x/hybrid_ctx_agree.pt"), training_sites("x/hybrid_r50_ctx_agree_final.pt")
     assert 25 <= len(exp4) < len(final) and familiarity(*exp4[0][1:3], exp4)[:2] == (0.0, exp4[0][0])   # a site is 0 km from itself
+    assert training_sites(WEIGHTS) == final if "_final" in WEIGHTS.split(",")[0] else True   # comma-separated: the first one counts
     crop, grass = (np.full((2, 2), CLASSES.index(c), np.uint8) for c in ("crops", "low_vegetation"))
     assert second_opinion([crop] * CROP_MONTHS + [grass] * 9, grass)["typical"][0, 0] == CLASSES.index("crops")
     assert second_opinion([crop] * (CROP_MONTHS - 1) + [grass] * 9, grass)["typical"][0, 0] == CLASSES.index("low_vegetation")
 
 
-def run_and_save(lat, lon, start, model, place=None):
-    res = run(lat, lon, start, model)
+def run_and_save(lat, lon, start, models, place=None):
+    res = run(lat, lon, start, models)
     res["place"] = place or f"{lat:.4f}, {lon:.4f}"
     check(res)
     os.makedirs(RUNS, exist_ok=True)
@@ -429,17 +459,17 @@ if __name__ == "__main__":
     if not a.demos and None in (a.lat, a.lon, a.start):
         p.error("give --lat, --lon and --start, or --demos")
     init_ee()
-    model = load_model()
+    models = load_model()
     if a.demos:
         for place, (lat, lon) in DEMOS.items():
             try:
-                res, name = run_and_save(lat, lon, DEMO_START, model, place)
+                res, name = run_and_save(lat, lon, DEMO_START, models, place)
             except ValueError as e:              # no radar there: say so and go on with the next place
                 print(f"{place}: {e}")
                 continue
             print(f"{place}: saved {name}.pkl.gz   biggest changes: {biggest_changes(res)}", flush=True)
         raise SystemExit
-    res, name = run_and_save(a.lat, a.lon, a.start, model)
+    res, name = run_and_save(a.lat, a.lon, a.start, models)
     np.set_printoptions(suppress=True)
     print("% of area per class each month:\n", " " * 8, " ".join(f"{c[:8]:>9s}" for c in CLASSES))
     for m, row in zip(res["months"], res["shares"]):

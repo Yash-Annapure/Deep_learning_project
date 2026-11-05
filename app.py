@@ -28,10 +28,11 @@ def model():
 
 @st.cache_resource
 def load(path):
-    """A saved run in two versions: the model's raw monthly maps, and with one-month flickers removed (P.despike)."""
+    """A saved run in two versions: the model's raw monthly maps, and smoothed over months (the 3-month mean the run
+    saved, or P.despike for runs saved before it)."""
     res = P.load(path)
     res.update(P.second_opinion(res["maps"], res["wc"]))    # runs saved before a rule change get the current comparison
-    clean = P.despike(res["maps"])
+    clean = res.get("smooth") or P.despike(res["maps"])
     return {True: {**res, "maps": clean, **P.summarise(clean)}, False: res}
 
 
@@ -125,15 +126,17 @@ else:
     bar.empty()
 
 clean = st.sidebar.toggle("Remove one-month flickers", value=True,
-                          help="A pixel whose class differs from both the month before and the month after, which agree, "
-                               "takes their class: a real change lasts at least 2 months, radar speckle flips a pixel for one.")
+                          help="Each month is averaged with the months before and after (the model's class probabilities, "
+                               "where both have radar): a real change lasts at least 2 months and stays, radar speckle flips "
+                               "a pixel for one month and goes. This halved the false changes in testing. A flood that lasts "
+                               "one month goes too: switch this off to see it. Older saved runs use a simpler rule.")
 res = load(path)[clean]
 P.check(res)                                                      # shares add up to 100, changes to 0
 have = [i for i, mp in enumerate(res["maps"]) if mp is not None]
 
 # ---- the answer first: what changed, then the months to look at ----
 st.title(res.get("place", f"{res['lat']:.4f}, {res['lon']:.4f}"))
-sites = P.training_sites(res.get("weights", P.WEIGHTS))           # runs saved before this was recorded: the default model
+sites = P.training_sites(res.get("weights", P.OLD_WEIGHTS))       # runs saved before this was recorded: exp4's model
 st.caption(f"{res['lat']:.4f}, {res['lon']:.4f} · 10 km × 10 km · {res['months'][0]} to {res['months'][-1]} · "
            f"Sentinel-1 radar only, model trained on {len(sites)} sites")
 km, near, what = P.familiarity(res["lat"], res["lon"], sites)
