@@ -21,4 +21,7 @@ final model stays. Either way the holdout is scored once, after this decision.
 
     nohup bash -c "CUDA_VISIBLE_DEVICES=0 uv run python -u run_experiments.py --only 42,43 > lovasz.log 2>&1 && CUDA_VISIBLE_DEVICES=0 uv run python -u run_experiments.py --lovasz >> lovasz.log 2>&1" > /dev/null 2>&1 &
 
-**Results:** pending.
+**Results** (2026-11-06): mean of 2 seeds on the 62 `final` sites, with Lovász **0.393**, without 0.392: +0.001,
+largest class drop −0.007. **Not met:** no final model with Lovász (44-45 not run); exp10's final model stays, with
+exp11's averaging. Optimising IoU directly adds nothing here over the weighted cross-entropy, in line with exp6-9:
+the gains came from data (new places, cleaner labels) and from averaging, not from the training recipe.

@@ -53,3 +53,42 @@ first after the holdout sites: deciduous forest (Spessart, Pennsylvania, Vermont
 (East Anglia, North Dakota), Great Plains rangeland and a plains town (Nebraska Sandhills, Lubbock). No extra sites for
 "trees called built". Tropical America moves to the end of the priority order: the model already knows tropical kinds
 of place.
+
+## After: the same 6 places with the final model (2026-11-05)
+
+**How:** `prototype.py` with the final model (exp10, 103 sites, 2 seeds averaged), the same 12 months from 2025-06,
+raw monthly maps for both models (no month smoothing), so only the model differs. The earlier runs are kept in
+`prototype_runs_before/` on the server.
+
+| Place | Model vs Dynamic World, before → after | Model vs WorldCover, before → after |
+|---|---|---|
+| Nebraska, USA | 75% → **89%** | 57% → 64% |
+| Massachusetts, USA | 72% → **89%** | 70% → **82%** |
+| Picardy, France | 77% → **96%** | 72% → **90%** |
+| Munich, Germany | 91% → 91% | 64% → 68% |
+| Heidelberg, Germany | 86% → **93%** | 71% → 79% |
+| Rio Grande do Sul, Brazil | 82% → 86% | 70% → 69% |
+
+**The three weaknesses, month by month** (% of the 10 km square, June 2025 to May 2026):
+
+| Place, class | Before | After |
+|---|---|---|
+| Massachusetts, trees | 66 62 66 63 53 51 **32** 42 56 45 59 58 | 80 80 79 79 78 76 77 77 76 74 76 78 |
+| Picardy, "water" | 6 4 4 3 3 3 3 4 3 4 **31 42** | 2 2 2 2 2 2 2 2 2 2 2 4 |
+| Picardy, crops | 50 41 61 56 37 37 32 30 **13** 31 36 33 | 81 80 80 80 79 79 78 78 77 80 81 80 |
+| Nebraska, bare | 9 5 11 5 13 **62 77 74 85 70 66 50** | 1 0 1 0 1 3 4 3 10 3 3 2 |
+| Nebraska, crops | 51 49 53 47 45 12 3 2 1 10 13 19 | 49 50 50 49 49 52 52 51 52 52 53 51 |
+
+**Findings:**
+- **All three weaknesses are gone at these places.** Leafless forest in winter stays trees (Massachusetts, December:
+  32% → 77%); freshly rolled spring fields are no longer called water (Picardy, May: 42% → 4%), a confusion the
+  first diagnosis had missed; harvested Great Plains fields stay crops instead of bare (Nebraska, February: bare
+  85% → 10%).
+- **WorldCover agrees too**, not only Dynamic World (the model's teacher): Picardy +18 points, Massachusetts +12.
+- **The swings the old model showed here were false changes.** By Dynamic World's definitions a deciduous forest is
+  trees and a field is crops all year, so the new model's flat curves are right. A change map must not report winter
+  leaf fall as deforestation; the tropical demos (Bagre, Tonle Sap, Satkhira, Lake Debo) show that real seasonal
+  change still comes through.
+- **Not an unbiased score:** the new sites were chosen to fix exactly these weaknesses, and Munich and Heidelberg are
+  about 40 km from a new training site. The holdout (8 sites in Europe and the Americas, scored once) gives the
+  unbiased number.
