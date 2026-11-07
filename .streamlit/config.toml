@@ -1,0 +1,31 @@
+# The app's look: ui-ux-pro-max design system (Swiss minimalism, Fira Sans), black by the user's choice,
+# with the user's steel-blue accent (white button text at about 6:1; the skill's green would be 2.3:1 and look like
+# the vegetation classes). The class colours stay as in lulc.py.
+[server]
+enableStaticServing = true          # serves static/ (the self-hosted Fira fonts)
+
+[theme]
+base = "dark"
+primaryColor = "#3e6488"
+backgroundColor = "#000000"
+secondaryBackgroundColor = "#161616"
+textColor = "#ededed"
+linkColor = "#93c5fd"
+borderColor = "#333333"
+showWidgetBorder = true
+baseRadius = "small"
+font = "Fira Sans, sans-serif"
+headingFont = "Fira Sans, sans-serif"
+headingFontWeights = [600, 600, 600, 500, 500, 500]
+codeFont = "Fira Code, monospace"
+fontFaces = [
+  { family = "Fira Sans", url = "app/static/firasans-400.woff2", weight = 400 },
+  { family = "Fira Sans", url = "app/static/firasans-500.woff2", weight = 500 },
+  { family = "Fira Sans", url = "app/static/firasans-600.woff2", weight = 600 },
+  { family = "Fira Code", url = "app/static/firacode.woff2", weight = "400 600" },
+]
+
+[theme.sidebar]
+backgroundColor = "#0d0d0d"
+secondaryBackgroundColor = "#000000"
+borderColor = "#333333"

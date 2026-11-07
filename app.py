@@ -10,6 +10,7 @@ import glob
 import os
 import time
 
+import altair as alt
 import folium
 import numpy as np
 import pandas as pd
@@ -67,6 +68,22 @@ CHANGED_HELP = ("How much of the square has a different class than in the previo
                 "trees: 2% of pixels changed, 0 points). Part of it is noise: in our tests, with flicker removal on, up "
                 "to about 1 in 10 pixels that did not really change still flipped in a month. Real change is large, "
                 "clustered (switch on the magenta highlight to see where) and lasts more than one month.")
+
+
+def trend_chart(shares):
+    """Share of the square per class and month; hovering a month draws a rule and lists all classes' shares there.
+    Months without radar are skipped, not drawn as gaps."""
+    long = shares.dropna().assign(date=lambda d: pd.to_datetime(d.index + "-01")).melt("date", var_name="cls", value_name="share")
+    base = alt.Chart(long).encode(x=alt.X("date:T", title=None, axis=alt.Axis(format="%b %Y", labelAngle=0, tickCount="month")))
+    lines = base.mark_line(strokeWidth=2.5, point=alt.OverlayMarkDef(size=36)).encode(
+        y=alt.Y("share:Q", title="% of the square"),
+        color=alt.Color("cls:N", title=None, scale=alt.Scale(domain=NAMES, range=P.COLORS), legend=alt.Legend(orient="bottom")))
+    hover = alt.selection_point(on="pointerover", nearest=True, fields=["date"], empty=False)
+    rule = base.transform_pivot("cls", value="share", groupby=["date"]).mark_rule(color="#a3a3a3", strokeWidth=1.5).encode(
+        opacity=alt.condition(hover, alt.value(0.9), alt.value(0)),
+        tooltip=[alt.Tooltip("date:T", title="month", format="%B %Y")]
+                + [alt.Tooltip(field=n, type="quantitative", format=".1f", title=f"{n} (%)") for n in NAMES]).add_params(hover)
+    return (lines + rule).properties(height=320)
 
 
 def square(lat, lon):
@@ -135,7 +152,7 @@ def month_viewer(res):
                                 "so it shows the place, not the month's changes.")
         opacity = st.slider("Map opacity", 0, 100, 60, 5, format="%d%%", disabled=not on_sat,
                             help="0% shows only the satellite photo, 100% only the land-cover map.")
-        play = st.button("▶ Play the 12 months", disabled=on_sat,
+        play = st.button("Play the 12 months", icon=":material/play_arrow:", disabled=on_sat,
                          help="Shows the months one after another. Not over the satellite photo: it is one picture from "
                               "another date, so it would not change with them.")
         i = res["months"].index(month)
@@ -232,7 +249,8 @@ if path is None:
     st.info("Click the map above, then press Run in the side panel: the 12 months appear here.")
     st.stop()
 st.divider()
-head, option = st.columns([3, 1])
+card = st.container(border=True)                                  # the answer first: place, familiarity, what changed most
+head, option = card.columns([3, 1], vertical_alignment="center")
 clean = option.toggle("Remove one-month flickers", value=True,
                       help="Each month is averaged with the months before and after (the model's class probabilities, "
                            "where both have radar): a real change lasts at least 2 months and stays, radar speckle flips "
@@ -242,22 +260,32 @@ res = load(path)[clean]
 P.check(res)                                                      # shares add up to 100, changes to 0
 have = [i for i, mp in enumerate(res["maps"]) if mp is not None]
 head.header("2. " + res.get("place", f"{res['lat']:.4f}, {res['lon']:.4f}"))
+sites = P.training_sites(res.get("weights", P.OLD_WEIGHTS))       # runs saved before this was recorded: exp4's model
+card.caption(f"{res['lat']:.4f}, {res['lon']:.4f} · 10 km × 10 km · {res['months'][0]} to {res['months'][-1]} · "
+             f"Sentinel-1 radar only, model trained on {len(sites)} sites")
+km, near, what = P.familiarity(res["lat"], res["lon"], sites)
+badge = ("green", "Close to the training data") if km < 100 else \
+        ("blue", "In a region the model has learned from") if km < 500 else ("orange", "Far from all training data")
+card.markdown(f":{badge[0]}-badge[{badge[1]}] &nbsp; Nearest training site: **{near.replace('_', ' ')}**"
+              f"{f' ({what})' if what else ''}, {km:,.0f} km away."
+              + (" The maps may be less reliable here; distance is only a rough guide, a far place can still look like "
+                 "one the model knows." if km >= 500 else ""))
+cols = card.columns(4)
+last, first = res["months"][have[-1]], res["months"][have[0]]
+for col, (c, pts) in zip(cols, P.biggest_changes(res)):
+    i = P.CLASSES.index(c)
+    s = res["shares"][have[-1]][i]
+    col.metric(NAMES[i], f"{s:.1f}% of the area", f"{pts:+.1f} points since {first}", delta_color="off",
+               help=f"{NAMES[i].capitalize()} covers {s:.1f}% of the square in {last}, i.e. {s:.1f} km² of 100 km². "
+                    f"Below: the change since {first} in percentage points ({pts:+.1f} points = {abs(pts):.1f} km² "
+                    f"{'more' if pts >= 0 else 'less'}). These are the classes whose share changed most over the 12 months.")
+cols[3].metric("Months with radar", f"{len(have)} of 12",
+               help="Months in which Sentinel-1 covered the whole square. A month without full coverage is left out, so a "
+                    "gap is never counted as a change. Fewer months = a thinner picture of the year.")
 picked = (round(st.session_state.lat, 4), round(st.session_state.lon, 4))
 if picked != (round(res["lat"], 4), round(res["lon"], 4)):
-    st.info(f"📍 The yellow square you picked ({picked[0]:.4f}, {picked[1]:.4f}) has not been analysed yet: press **Run "
+    st.info(icon=":material/location_on:", body=f"The yellow square you picked ({picked[0]:.4f}, {picked[1]:.4f}) has not been analysed yet: press **Run "
             f"for this square** in the side panel. Below are the results for the white dashed square.")
-sites = P.training_sites(res.get("weights", P.OLD_WEIGHTS))       # runs saved before this was recorded: exp4's model
-st.caption(f"{res['lat']:.4f}, {res['lon']:.4f} · 10 km × 10 km · {res['months'][0]} to {res['months'][-1]} · "
-           f"Sentinel-1 radar only, model trained on {len(sites)} sites")
-km, near, what = P.familiarity(res["lat"], res["lon"], sites)
-nearest = f"Nearest training site: **{near.replace('_', ' ')}**{f' ({what})' if what else ''}, {km:,.0f} km away."
-if km < 100:
-    st.success(f"Close to the training data. {nearest}")
-elif km < 500:
-    st.info(f"In a region the model has learned from. {nearest}")
-else:
-    st.warning(f"Far from all training data, so the maps may be less reliable here. {nearest} "
-               "Distance is only a rough guide: a far place can still look like one the model knows.")
 with st.expander("How to read the numbers on this page"):
     st.markdown(f"""
 - **% of the area**: how much of the 10 km × 10 km square a class covers. The square is 100 km², so **1% = 1 km²**.
@@ -271,21 +299,9 @@ with st.expander("How to read the numbers on this page"):
   a single month disappears; a change that lasts stays. Switch it off to see the raw monthly maps.
 - **Agreement** (tab *Compared with other maps*): the share of pixels where two maps give the same class. No map is
   the truth: read the model's agreement next to how well the two optical maps agree with each other.
-- **Nearest training site** (box above): how far this square is from the closest place the model learned from.
+- **Nearest training site** (badge above): how far this square is from the closest place the model learned from.
   Farther means less familiar, so read the maps with more care.
 """)
-cols = st.columns(4)
-last, first = res["months"][have[-1]], res["months"][have[0]]
-for col, (c, pts) in zip(cols, P.biggest_changes(res)):
-    i = P.CLASSES.index(c)
-    s = res["shares"][have[-1]][i]
-    col.metric(NAMES[i], f"{s:.1f}% of the area", f"{pts:+.1f} points since {first}", delta_color="off",
-               help=f"{NAMES[i].capitalize()} covers {s:.1f}% of the square in {last}, i.e. {s:.1f} km² of 100 km². "
-                    f"Below: the change since {first} in percentage points ({pts:+.1f} points = {abs(pts):.1f} km² "
-                    f"{'more' if pts >= 0 else 'less'}). These are the classes whose share changed most over the 12 months.")
-cols[3].metric("Months with radar", f"{len(have)} of 12",
-               help="Months in which Sentinel-1 covered the whole square. A month without full coverage is left out, so a "
-                    "gap is never counted as a change. Fewer months = a thinner picture of the year.")
 missing = [m for m, mp in zip(res["months"], res["maps"]) if mp is None]
 if missing:
     st.warning(f"No full radar coverage in {', '.join(missing)}. Those months are left out, and changes are measured against "
@@ -297,7 +313,7 @@ trends, opinion, grid = st.tabs(["Trends", "Compared with other maps", "All 12 m
 with trends:
     shares = pd.DataFrame(res["shares"], index=res["months"], columns=NAMES)
     st.subheader("Share of the area per class (%)")
-    st.line_chart(shares.dropna(), color=P.COLORS)               # months without radar are skipped, not drawn as gaps
+    st.altair_chart(trend_chart(shares), width="stretch")
     st.caption("One line per class: its share of the square each month. A flat line is a stable class; a line that rises "
                "while another falls is area moving between those two classes (for example water → bare as a reservoir "
                "dries out, bare → crops as fields are planted).")

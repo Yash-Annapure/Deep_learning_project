@@ -390,16 +390,21 @@ def crf(weights):
     print("\n".join(md))
 
 
+TROPICAL_HOLDOUT = {"kumasi", "kano", "chiang_mai", "gulu_rural", "kayes_rural", "anuradhapura_rural"}   # the first 6 (2026-10-27); the other 8: Europe and the Americas
+
+
 def holdout(weights_list, role="holdout"):
     """The final evaluation, run ONCE at the very end: each model's IoU per class on the 6 holdout sites (never used for
     any decision), the same scoring as validation. Saved into each results file (holdout_miou, holdout_iou) and side
     by side in experiments/holdout_results.md. role="final" (--tiebreak): the same on the 6 final-model sites, once,
     before the final model trains on them (exp8 rule 4)."""
-    import numpy as np
+    import copy
     from lulc import CLASSES, LULCDataset
     names = [c.replace("_", " ") for c in CLASSES]
-    md = [f"# Scores on the 6 {role} sites (scored once)", "",
-          "| Model | mIoU | " + " | ".join(names) + " |", "|---" * (len(names) + 2) + "|"]
+    regions = {"tropics": TROPICAL_HOLDOUT} if role == "holdout" else {}   # exp10: also reported per region
+    md = [f"# Scores on the {role} sites (scored once)", "",
+          "| Model | mIoU | " + "".join(f"mIoU {g} | " for g in list(regions) + ["new regions"] * bool(regions))
+          + " | ".join(names) + " |", "|---" * (len(names) + 2 + 2 * bool(regions)) + "|"]
     datasets = {}                                              # one dataset per way of preparing the radar
     for w in weights_list:
         name = os.path.basename(w)[:-3]
@@ -407,15 +412,23 @@ def holdout(weights_list, role="holdout"):
         if key not in datasets:
             datasets[key] = LULCDataset(role, **input_of(name))
         ds = datasets[key]
-        cm, iou = confusion(load_run(w, ds.channels), ds)
+        model = load_run(w, ds.channels)
+        cm, iou = confusion(model, ds)
         m = float(iou[cm.sum(1) > 0].mean())
+        r_new = {f"{role}_miou": m, f"{role}_iou": iou.tolist()}
+        for g, inside in (("tropics", True), ("new regions", False)) if regions else ():
+            sub = copy.copy(ds)                                # the same windows, only those of this region's sites
+            sub.items = [it for it in ds.items if (ds.site[it[0]] in TROPICAL_HOLDOUT) == inside]
+            gcm, giou = confusion(model, sub)
+            r_new[f"{role}_miou_{g.replace(' ', '_')}"] = float(giou[gcm.sum(1) > 0].mean())
         f = results_file(name, os.path.dirname(os.path.dirname(w)))
         r = json.load(open(f)) if os.path.exists(f) else {}
-        r.update({f"{role}_miou": m, f"{role}_iou": iou.tolist()})
+        r.update(r_new)
         os.makedirs(os.path.dirname(f), exist_ok=True)
         json.dump(r, open(f, "w"))
-        md.append(f"| `{w}` | {m:.3f} | " + " | ".join(f"{v:.3f}" for v in iou) + " |")
-        print(f"{name:40s} {role} mIoU {m:.3f}", flush=True)
+        cells = [f"{r_new[f'{role}_miou_{g}']:.3f}" for g in ("tropics", "new_regions")] if regions else []
+        md.append(f"| `{w}` | {m:.3f} | " + "".join(c + " | " for c in cells) + " | ".join(f"{v:.3f}" for v in iou) + " |")
+        print(f"{name:40s} {role} mIoU {m:.3f}" + (f"  (tropics {cells[0]}, new regions {cells[1]})" if cells else ""), flush=True)
     open(f"experiments/{role}_results.md", "w", encoding="utf-8").write("\n".join(md) + "\n")
     print("\n".join(md))
 
