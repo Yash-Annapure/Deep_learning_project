@@ -14,3 +14,4 @@ streamlit.log
 coherence_raw/
 coherence.log
 demos.tgz
+.claude

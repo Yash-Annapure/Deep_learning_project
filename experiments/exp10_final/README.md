@@ -44,4 +44,31 @@ pick an epoch). Two seeds. Any change suggested by the exp6-9 pictures is made b
 - **Added 2026-11-05, same conditions:** if exp12's rule passes, the final model with the Lovász loss (exp12, entries
   44-45) takes this model's place in the prototype; this model is still scored on the holdout next to it.
 
-**Results:** pending.
+**Results** (holdout, scored once on 2026-11-07, `run_experiments.py --holdout`, windows as in validation; 14 sites:
+6 tropics, 8 Europe and the Americas; mean of 2 seeds where a setup has two):
+
+| Model | Sites trained on | mIoU | tropics (6) | new regions (8) | water | trees | low veg | flooded veg | crops | built | bare |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| exp4 (the first prototype model, ResNet-34) | 29 | 0.433 | 0.357 | 0.437 | 0.743 | 0.568 | 0.364 | 0.037 | 0.339 | 0.793 | 0.189 |
+| exp8 ResNet-50 from scratch | 29 | 0.423 | 0.366 | 0.414 | 0.720 | 0.558 | 0.325 | 0.042 | 0.334 | 0.788 | 0.194 |
+| exp8 ResNet-50 SSL4EO | 29 | 0.414 | 0.338 | 0.423 | 0.695 | 0.532 | 0.370 | 0.032 | 0.312 | 0.799 | 0.156 |
+| **exp10 final model** (ResNet-50 from scratch) | **103** | **0.481** | 0.366 | **0.493** | 0.790 | 0.633 | 0.422 | 0.070 | 0.409 | 0.807 | 0.238 |
+
+Seeds: final 0.481 / 0.481, scratch 0.420 / 0.425, SSL4EO 0.414 / 0.414, exp4 seed 0 only.
+
+**What the holdout says:**
+- **The new sites did the work.** Same setup, 29 → 103 sites: mIoU 0.423 → 0.481 (+0.058). In the new regions
+  0.414 → 0.493 (+0.080), where the 62 sites were aimed; in the tropics 0.366 → 0.366, unchanged, not hurt.
+- **The final model is the best on every class**, against every 29-site model (largest gains: crops +0.075, trees
+  +0.075, low vegetation +0.097 over the 29-site setup). Its two seeds agree to the third decimal.
+- **Against the first prototype model (exp4): +0.048** overall, +0.056 in the new regions, +0.009 in the tropics.
+- **The exp8 tiebreak held overall:** from scratch 0.423 against SSL4EO 0.414, though by region it is mixed
+  (tropics: scratch +0.028; new regions: SSL4EO +0.009).
+- **Not confirmed:** exp8's gain of ResNet-50 over ResNet-34 (+0.011 on validation). On the holdout both 29-site
+  ResNet-50 models score below exp4 (0.423 and 0.414 against 0.433). The final model's gain over exp4 therefore
+  comes from the data, not from the larger encoder.
+- **Weak spots that remain:** flooded vegetation (0.070) and bare ground (0.238); the tropical holdout sites score
+  lower than the new regions (0.366 against 0.493) for every model, so they are harder sites, not a regression.
+
+The prototype uses the final model as committed (both seeds averaged, 3-month mean; exp11). Its holdout score with
+that averaging, on full scenes, is in `experiments/exp11_averaging/results_holdout.md`.

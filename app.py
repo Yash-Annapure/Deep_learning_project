@@ -354,7 +354,10 @@ with opinion:
                "WorldCover is from 2021, uses its own class definitions (trees from 10% canopy, for example) and filtered this "
                "model's training labels. Where Dynamic World and WorldCover disagree, the model cannot satisfy both.")
 with grid:
-    blank = np.full((250, 250, 3), 230, np.uint8)                 # months without radar: grey
-    imgs = [blank if res["maps"][k] is None else P.month_image(res, k)[::4, ::4] for k in range(12)]
-    st.image(imgs, caption=res["months"], width=220)
+    blank = np.full((250, 250, 3), 38, np.uint8)                  # months without radar: dark grey
+    for row in range(3):                                          # a 4-column grid: the columns' gap separates the maps
+        for col, k in zip(st.columns(4), range(4 * row, 4 * row + 4)):
+            col.image(blank if res["maps"][k] is None else P.month_image(res, k)[::4, ::4],
+                      caption=res["months"][k] + ("" if res["maps"][k] is not None else ": no full radar coverage"),
+                      width="stretch")
     st.markdown(LEGEND, unsafe_allow_html=True)

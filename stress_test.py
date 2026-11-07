@@ -31,7 +31,7 @@ PLACES = [  # (group, name, lat, lon, first month, what to look for)
     ("edge", "Everest, Nepal: high mountains", 27.99, 86.92, "2025-06", "steep terrain, snow: expect confusion"),
     ("edge", "Bernese Alps, Switzerland", 46.54, 7.96, "2025-06", "mountains, glacier, valley towns"),
     ("edge", "Dubai, UAE: coast, city, desert", 25.20, 55.27, "2025-06", "water, built, bare"),
-    ("event", "Kakhovka reservoir, Ukraine: dam destroyed 6 June 2023", 47.45, 34.45, "2023-01", "water falls from June 2023"),
+    ("event", "Kakhovka reservoir, Ukraine: dam destroyed 6 June 2023", 47.525, 34.40, "2023-01", "water falls from June 2023"),   # 47.45, 34.45 was the shore town
     ("event", "Tulare Lake, California: lake returned in spring 2023", 36.05, -119.80, "2022-10", "water rises from March 2023"),
     ("event", "Dadu, Pakistan: floods from August 2022", 26.70, 67.75, "2022-04", "water rises Aug-Oct 2022"),
     ("event", "Pacific Palisades, California: fire of January 2025", 34.07, -118.55, "2024-07", "trees/low veg to bare in Jan 2025"),
