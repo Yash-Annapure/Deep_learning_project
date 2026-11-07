@@ -58,7 +58,10 @@ def table(df):
 
 
 NAMES = [c.replace("_", " ") for c in P.CLASSES]
-LEGEND = " &nbsp; ".join(f"<span style='color:{c}; font-size:1.3em'>■</span> {n}" for c, n in zip(P.COLORS, NAMES))
+WEAK = {"flooded vegetation", "bare"}          # low reliability on the holdout (IoU 0.07 and 0.24): marked with *
+LEGEND = (" &nbsp; ".join(f"<span style='color:{c}; font-size:1.3em'>■</span> {n}{'*' * (n in WEAK)}"
+                          for c, n in zip(P.COLORS, NAMES))
+          + " &nbsp; <span style='color:#9ca3af'>* low reliability in testing: read these colours with care</span>")
 START = (-0.0917, 34.7680)                    # the first place offered: Kisumu, Lake Victoria
 MAP_PX = 600                                  # height of the satellite view (the picture view fills its half of the page)
 SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -270,6 +273,11 @@ card.markdown(f":{badge[0]}-badge[{badge[1]}] &nbsp; Nearest training site: **{n
               f"{f' ({what})' if what else ''}, {km:,.0f} km away."
               + (" The maps may be less reliable here; distance is only a rough guide, a far place can still look like "
                  "one the model knows." if km >= 500 else ""))
+unknown = float(np.mean(res["wc"] == P.NO_DATA) * 100)           # WorldCover's snow/ice and moss: classes the model lacks
+if unknown > 5:
+    card.warning(f"ESA WorldCover marks {unknown:.0f}% of this square as snow, ice or tundra moss. The model has no class "
+                 "for these (its training places had none), so those pixels get the nearest of its 7 classes: the maps "
+                 "are unreliable there, whatever the distance to the training data says.", icon=":material/ac_unit:")
 cols = card.columns(4)
 last, first = res["months"][have[-1]], res["months"][have[0]]
 for col, (c, pts) in zip(cols, P.biggest_changes(res)):
@@ -297,6 +305,10 @@ with st.expander("How to read the numbers on this page"):
   counted as change.
 - **Remove one-month flickers** (switch next to the heading): each month is averaged with its neighbours, so speckle that flips a pixel for
   a single month disappears; a change that lasts stays. Switch it off to see the raw monthly maps.
+- **Low reliability (\\*)**: in the final test on 14 places the model never saw, it recognised flooded vegetation in only
+  14% of cases and called 40% of bare ground built-up (dry, bright soil echoes like buildings in radar). Water,
+  built-up areas and trees are reliable (IoU 0.79, 0.81 and 0.63); crops and low vegetation are in between (about 0.4).
+- **Snow and ice**: the model has no class for them. Where WorldCover shows them, a warning appears above.
 - **Agreement** (tab *Compared with other maps*): the share of pixels where two maps give the same class. No map is
   the truth: read the model's agreement next to how well the two optical maps agree with each other.
 - **Nearest training site** (badge above): how far this square is from the closest place the model learned from.
