@@ -1,0 +1,87 @@
+device: cuda NVIDIA RTX A6000
+{'train': 65712, 'val': 7006, 'test': 1764} patches
+65,712 windows, 18.8 GB of radar and labels kept on cuda
+7,006 windows, 2.0 GB of radar and labels kept on cuda
+1,764 windows, 0.5 GB of radar and labels kept on cuda
+oversampling off (OVERSAMPLE = 1)
+{'water': 1.33, 'trees': 0.84, 'low_vegetation': 0.8, 'flooded_vegetation': 1.46, 'crops': 0.71, 'built': 0.6, 'bare': 1.26}
+epoch  1/15  loss 0.868  val OA 0.417  val mIoU 0.261  (192s)
+epoch  2/15  loss 0.737  val OA 0.490  val mIoU 0.295  (181s)
+epoch  3/15  loss 0.693  val OA 0.343  val mIoU 0.213  (180s)
+epoch  4/15  loss 0.661  val OA 0.572  val mIoU 0.375  (181s)
+epoch  5/15  loss 0.640  val OA 0.586  val mIoU 0.396  (181s)
+epoch  6/15  loss 0.618  val OA 0.516  val mIoU 0.352  (181s)
+epoch  7/15  loss 0.602  val OA 0.562  val mIoU 0.361  (180s)
+epoch  8/15  loss 0.587  val OA 0.519  val mIoU 0.349  (180s)
+epoch  9/15  loss 0.575  val OA 0.559  val mIoU 0.375  (181s)
+epoch 10/15  loss 0.563  val OA 0.566  val mIoU 0.381  (179s)
+epoch 11/15  loss 0.552  val OA 0.625  val mIoU 0.440  (181s)
+epoch 12/15  loss 0.545  val OA 0.625  val mIoU 0.441  (181s)
+epoch 13/15  loss 0.539  val OA 0.631  val mIoU 0.443  (193s)
+epoch 14/15  loss 0.535  val OA 0.628  val mIoU 0.445  (193s)
+epoch 15/15  loss 0.533  val OA 0.628  val mIoU 0.441  (200s)
+[hybrid_ctx_agree_spread] VALIDATION mIoU 0.445  water IoU 0.540  water precision 0.759
+
+[hybrid_ctx_agree_spread] test OA 0.707  mIoU 0.392  over 70,010,439 labelled pixels
+
+class                   IoU     F1      pixels
+water                 0.732  0.845     759,350
+trees                 0.302  0.463   5,500,991
+low_vegetation        0.457  0.628  15,480,003
+flooded_vegetation    0.091  0.167      83,006
+crops                 0.213  0.351   8,511,496
+built                 0.829  0.906  33,015,911
+bare                  0.117  0.210   6,659,682
+
+month     OA   mIoU      pixels
+    1  0.653  0.353   9,633,300
+    2  0.606  0.340   9,633,772
+    3  0.632  0.377   9,633,772
+    4  0.755  0.428   9,633,792
+    5  0.790  0.444   6,422,528
+    6  0.832  0.375     932,500
+    7  0.000  0.000           0
+    8  0.000  0.000           0
+    9  0.205  0.134     255,741
+   10  0.848  0.384   4,598,578
+   11  0.730  0.393   9,633,600
+   12  0.743  0.378   9,632,856
+validation confusion matrix
+real-label pixels: 1,000,000  false-water pixels: 8,384 (0.8% of them)
+what the false water truly is: {'trees': 0.26, 'low_vegetation': 0.03, 'flooded_vegetation': 0.37, 'crops': 0.07, 'built': 0.25, 'bare': 0.02}
+VALIDATION (decide with these)        hybrid_ctx  hybrid_ctx_seed1hybrid_ctx_agree_spread
+  mIoU                                     0.371             0.362             0.445
+  water IoU                                0.488             0.493             0.540
+  water precision                          0.717             0.670             0.759
+  IoU water                                0.488             0.493             0.540
+  IoU trees                                0.400             0.351             0.396
+  IoU low_vegetation                       0.296             0.355             0.370
+  IoU flooded_vegetation                   0.118             0.089             0.300
+  IoU crops                                0.297             0.282             0.369
+  IoU built                                0.765             0.740             0.797
+  IoU bare                                 0.233             0.221             0.344
+
+TEST (final exam)                     hybrid_ctx  hybrid_ctx_seed1hybrid_ctx_agree_spread
+  OA                                       0.694             0.683             0.707
+  mIoU                                     0.364             0.369             0.392
+  IoU water                                0.618             0.750             0.732
+  IoU trees                                0.385             0.301             0.302
+  IoU low_vegetation                       0.425             0.411             0.457
+  IoU flooded_vegetation                   0.048             0.007             0.091
+  IoU crops                                0.200             0.109             0.213
+  IoU built                                0.819             0.793             0.829
+  IoU bare                                 0.051             0.215             0.117
+
+test mIoU by month                    hybrid_ctx  hybrid_ctx_seed1hybrid_ctx_agree_spread
+  month 1                                  0.360             0.320             0.353
+  month 2                                  0.325             0.352             0.340
+  month 3                                  0.321             0.383             0.377
+  month 4                                  0.359             0.423             0.428
+  month 5                                  0.386             0.431             0.444
+  month 6                                  0.344             0.355             0.375
+  month 7                                  0.000             0.000             0.000
+  month 8                                  0.000             0.000             0.000
+  month 9                                  0.175             0.152             0.134
+  month 10                                 0.402             0.329             0.384
+  month 11                                 0.357             0.345             0.393
+  month 12                                 0.395             0.347             0.378

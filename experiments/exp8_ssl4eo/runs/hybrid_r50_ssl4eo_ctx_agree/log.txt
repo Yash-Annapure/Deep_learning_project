@@ -1,0 +1,89 @@
+device: cuda NVIDIA RTX A6000
+{'train': 65712, 'val': 7006, 'test': 1764} patches
+65,712 windows, 13.4 GB of radar and labels kept on cpu
+7,006 windows, 1.4 GB of radar and labels kept on cuda
+1,764 windows, 0.4 GB of radar and labels kept on cuda
+oversampling off (OVERSAMPLE = 1)
+{'water': 1.33, 'trees': 0.84, 'low_vegetation': 0.8, 'flooded_vegetation': 1.46, 'crops': 0.71, 'built': 0.6, 'bare': 1.26}
+Downloading: "https://hf.co/torchgeo/resnet50_sentinel1_all_moco/resolve/e79862c667853c10a709bdd77ea8ffbad0e0f1cf/resnet50_sentinel1_all_moco-906e4356.pth" to /home/jovyan/.cache/torch/hub/checkpoints/resnet50_sentinel1_all_moco-906e4356.pth
+  0%|          | 0.00/90.0M [00:00<?, ?B/s]  7%|▋         | 5.88M/90.0M [00:00<00:01, 61.1MB/s] 19%|█▉        | 17.1M/90.0M [00:00<00:00, 94.1MB/s] 32%|███▏      | 28.4M/90.0M [00:00<00:00, 104MB/s]  44%|████▍     | 39.6M/90.0M [00:00<00:00, 110MB/s] 57%|█████▋    | 50.9M/90.0M [00:00<00:00, 112MB/s] 69%|██████▉   | 62.1M/90.0M [00:00<00:00, 114MB/s] 82%|████████▏ | 73.4M/90.0M [00:00<00:00, 115MB/s] 94%|█████████▍| 84.6M/90.0M [00:00<00:00, 116MB/s]100%|██████████| 90.0M/90.0M [00:00<00:00, 110MB/s]
+epoch  1/15  loss 0.783  val OA 0.605  val mIoU 0.439  (501s)
+epoch  2/15  loss 0.673  val OA 0.579  val mIoU 0.399  (472s)
+epoch  3/15  loss 0.631  val OA 0.628  val mIoU 0.457  (450s)
+epoch  4/15  loss 0.605  val OA 0.624  val mIoU 0.447  (460s)
+epoch  5/15  loss 0.583  val OA 0.621  val mIoU 0.443  (567s)
+epoch  6/15  loss 0.565  val OA 0.626  val mIoU 0.456  (583s)
+epoch  7/15  loss 0.548  val OA 0.633  val mIoU 0.460  (594s)
+epoch  8/15  loss 0.535  val OA 0.626  val mIoU 0.449  (586s)
+epoch  9/15  loss 0.522  val OA 0.630  val mIoU 0.463  (581s)
+epoch 10/15  loss 0.509  val OA 0.640  val mIoU 0.468  (618s)
+epoch 11/15  loss 0.499  val OA 0.632  val mIoU 0.455  (499s)
+epoch 12/15  loss 0.491  val OA 0.631  val mIoU 0.451  (330s)
+epoch 13/15  loss 0.485  val OA 0.634  val mIoU 0.457  (442s)
+epoch 14/15  loss 0.482  val OA 0.635  val mIoU 0.463  (429s)
+epoch 15/15  loss 0.480  val OA 0.636  val mIoU 0.460  (445s)
+[hybrid_r50_ssl4eo_ctx_agree] VALIDATION mIoU 0.468  water IoU 0.553  water precision 0.753
+
+[hybrid_r50_ssl4eo_ctx_agree] test OA 0.686  mIoU 0.304  over 70,010,439 labelled pixels
+
+class                   IoU     F1      pixels
+water                 0.264  0.418     759,350
+trees                 0.274  0.430   5,500,991
+low_vegetation        0.453  0.623  15,480,003
+flooded_vegetation    0.011  0.022      83,006
+crops                 0.220  0.360   8,511,496
+built                 0.829  0.907  33,015,911
+bare                  0.078  0.145   6,659,682
+
+month     OA   mIoU      pixels
+    1  0.581  0.236   9,633,300
+    2  0.591  0.263   9,633,772
+    3  0.591  0.260   9,633,772
+    4  0.719  0.336   9,633,792
+    5  0.791  0.421   6,422,528
+    6  0.846  0.378     932,500
+    7  0.000  0.000           0
+    8  0.000  0.000           0
+    9  0.207  0.119     255,741
+   10  0.856  0.399   4,598,578
+   11  0.739  0.391   9,633,600
+   12  0.744  0.375   9,632,856
+validation confusion matrix
+real-label pixels: 1,000,000  false-water pixels: 6,752 (0.7% of them)
+what the false water truly is: {'trees': 0.25, 'low_vegetation': 0.03, 'flooded_vegetation': 0.47, 'crops': 0.04, 'built': 0.17, 'bare': 0.04}
+VALIDATION (decide with these)        hybrid_ctx  hybrid_ctx_seed1hybrid_r50_ctx_agreehybrid_r50_ssl4eo_ctx_agree
+  mIoU                                     0.371             0.362             0.467             0.468
+  water IoU                                0.488             0.493             0.552             0.553
+  water precision                          0.717             0.670             0.790             0.753
+  IoU water                                0.488             0.493             0.552             0.553
+  IoU trees                                0.400             0.351             0.351             0.357
+  IoU low_vegetation                       0.296             0.355             0.390             0.404
+  IoU flooded_vegetation                   0.118             0.089             0.407             0.443
+  IoU crops                                0.297             0.282             0.363             0.335
+  IoU built                                0.765             0.740             0.796             0.796
+  IoU bare                                 0.233             0.221             0.411             0.391
+
+TEST (final exam)                     hybrid_ctx  hybrid_ctx_seed1hybrid_r50_ctx_agreehybrid_r50_ssl4eo_ctx_agree
+  OA                                       0.694             0.683             0.702             0.686
+  mIoU                                     0.364             0.369             0.398             0.304
+  IoU water                                0.618             0.750             0.720             0.264
+  IoU trees                                0.385             0.301             0.306             0.274
+  IoU low_vegetation                       0.425             0.411             0.439             0.453
+  IoU flooded_vegetation                   0.048             0.007             0.052             0.011
+  IoU crops                                0.200             0.109             0.233             0.220
+  IoU built                                0.819             0.793             0.824             0.829
+  IoU bare                                 0.051             0.215             0.211             0.078
+
+test mIoU by month                    hybrid_ctx  hybrid_ctx_seed1hybrid_r50_ctx_agreehybrid_r50_ssl4eo_ctx_agree
+  month 1                                  0.360             0.320             0.339             0.236
+  month 2                                  0.325             0.352             0.364             0.263
+  month 3                                  0.321             0.383             0.394             0.260
+  month 4                                  0.359             0.423             0.433             0.336
+  month 5                                  0.386             0.431             0.477             0.421
+  month 6                                  0.344             0.355             0.385             0.378
+  month 7                                  0.000             0.000             0.000             0.000
+  month 8                                  0.000             0.000             0.000             0.000
+  month 9                                  0.175             0.152             0.121             0.119
+  month 10                                 0.402             0.329             0.381             0.399
+  month 11                                 0.357             0.345             0.392             0.391
+  month 12                                 0.395             0.347             0.375             0.375
