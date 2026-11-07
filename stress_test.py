@@ -35,9 +35,10 @@ PLACES = [  # (group, name, lat, lon, first month, what to look for)
     ("event", "Tulare Lake, California: lake returned in spring 2023", 36.05, -119.80, "2022-10", "water rises from March 2023"),
     ("event", "Manchar Lake, Pakistan: overflowed in the floods of August 2022", 26.47, 67.63, "2022-04",
      "water rises Aug-Oct 2022"),                                 # Dadu town (26.70, 67.75) stayed dry behind its embankments
-    ("event", "Pacific Palisades, California: fire of January 2025", 34.07, -118.55, "2024-07", "trees/low veg to bare in Jan 2025"),
+    ("event", "Pacific Palisades, California: fire of January 2025", 34.07, -118.55, "2024-07",
+     "trees fall from Feb 2025 (Dynamic World: 51% -> 16%, to low vegetation; radar VH -3 dB on 22% of the square)"),
 ]
-WATCH = {"water falls": "water", "water rises": "water", "to bare": "bare"}   # the class to follow for each event
+WATCH = {"water falls": "water", "water rises": "water", "trees fall": "trees"}   # the class to follow for each event
 
 
 def main():
