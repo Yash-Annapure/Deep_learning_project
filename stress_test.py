@@ -33,7 +33,8 @@ PLACES = [  # (group, name, lat, lon, first month, what to look for)
     ("edge", "Dubai, UAE: coast, city, desert", 25.20, 55.27, "2025-06", "water, built, bare"),
     ("event", "Kakhovka reservoir, Ukraine: dam destroyed 6 June 2023", 47.525, 34.40, "2023-01", "water falls from June 2023"),   # 47.45, 34.45 was the shore town
     ("event", "Tulare Lake, California: lake returned in spring 2023", 36.05, -119.80, "2022-10", "water rises from March 2023"),
-    ("event", "Dadu, Pakistan: floods from August 2022", 26.70, 67.75, "2022-04", "water rises Aug-Oct 2022"),
+    ("event", "Manchar Lake, Pakistan: overflowed in the floods of August 2022", 26.47, 67.63, "2022-04",
+     "water rises Aug-Oct 2022"),                                 # Dadu town (26.70, 67.75) stayed dry behind its embankments
     ("event", "Pacific Palisades, California: fire of January 2025", 34.07, -118.55, "2024-07", "trees/low veg to bare in Jan 2025"),
 ]
 WATCH = {"water falls": "water", "water rises": "water", "to bare": "bare"}   # the class to follow for each event
