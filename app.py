@@ -190,7 +190,7 @@ def month_viewer(res):
 
 # ---- 1. choose a place: on the map or by coordinates (a new run), or one saved earlier ----
 st.title("Land cover from Sentinel-1 radar, month by month")
-saved = sorted(glob.glob(f"{P.RUNS}/*.pkl.gz"))
+saved = sorted(glob.glob(f"{P.RUNS}/*.pkl.gz"), key=lambda p: load(p)[False].get("place", p))   # by name, as listed
 
 
 def show_saved():
