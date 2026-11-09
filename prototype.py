@@ -312,8 +312,11 @@ def second_opinion(maps, wc):
 
 
 def save(result, path):
-    with gzip.open(path, "wb") as f:
+    """Written to a temporary file and renamed into place in one step, so nobody ever reads a half-written run (an
+    interrupted save leaves only the .part file, which no listing picks up)."""
+    with gzip.open(path + ".part", "wb") as f:
         pickle.dump(result, f)
+    os.replace(path + ".part", path)
 
 
 def load(path):

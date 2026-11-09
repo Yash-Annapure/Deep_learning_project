@@ -196,7 +196,17 @@ def month_viewer(res):
 
 # ---- 1. choose a place: on the map or by coordinates (a new run), or one saved earlier ----
 st.title("Land cover from Sentinel-1 radar, month by month")
-saved = sorted(glob.glob(f"{P.RUNS}/*.pkl.gz"), key=lambda p: load(p)[False].get("place", p))   # by name, as listed
+def readable(path):
+    """A saved run that opens; a damaged file is left out of the list instead of breaking the page."""
+    try:
+        load(path)
+        return True
+    except Exception as e:
+        print(f"skipped unreadable run {path}: {e}", flush=True)
+        return False
+
+
+saved = sorted(filter(readable, glob.glob(f"{P.RUNS}/*.pkl.gz")), key=lambda p: load(p)[False].get("place", p))   # by name
 
 
 def show_saved():
