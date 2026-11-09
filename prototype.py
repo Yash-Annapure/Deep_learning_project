@@ -79,10 +79,10 @@ def load_model(paths=WEIGHTS):
 
 @functools.lru_cache
 def training_sites(weights=WEIGHTS):
-    """The sites a model learned from, as (name, lat, lon, what it is): SITES in 01_data_export.ipynb (in git, unlike
-    data/sites.csv), role train, plus val and final for the final model (its run name contains _final)."""
+    """The sites a model learned from, as (name, lat, lon, what it is): SITES in notebooks/01_data_export.ipynb (in git,
+    unlike data/sites.csv), role train, plus val and final for the final model (its run name contains _final)."""
     roles = {"train", "val", "final"} if "_final" in os.path.basename(weights.split(",")[0]) else {"train"}
-    src = next("".join(c["source"]) for c in json.load(open("01_data_export.ipynb", encoding="utf-8"))["cells"]
+    src = next("".join(c["source"]) for c in json.load(open("notebooks/01_data_export.ipynb", encoding="utf-8"))["cells"]
                if "".join(c["source"]).startswith("PROJECT ="))
     rows = re.findall(r'\("(\w+)",\s*(-?[\d.]+),\s*(-?[\d.]+),\s*"(\w+)"\),[ \t]*(?:#[ \t]*(.*))?', src)
     return [(n, float(la), float(lo), what.strip()) for n, la, lo, r, what in rows if r in roles]

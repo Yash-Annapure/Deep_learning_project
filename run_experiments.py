@@ -14,9 +14,9 @@
     uv run python run_experiments.py --crf experiments/<exp>/weights/<run>.pt
                                                   that model's validation scores without and with the convolutional CRF
     uv run python run_experiments.py --holdout <weights.pt> [<weights.pt> ...]
-                                                  THE FINAL EVALUATION, once at the very end: scores on the 6 holdout sites
+                                                  THE FINAL EVALUATION, once at the very end: scores on the 14 holdout sites
     uv run python run_experiments.py --tiebreak <weights.pt> [<weights.pt> ...]
-                                                  exp8 rule 4, once: the same on the 6 final-model sites, before the
+                                                  exp8 rule 4, once: the same on the 62 final-model sites, before the
                                                   final model trains on them
     uv run python run_experiments.py --final      exp8 rule 4 (the tiebreak above, once) and then the winning setup's
                                                   final-model runs (exp10), with no step in between
@@ -25,7 +25,7 @@
 To keep it going when your browser or connection drops:
     nohup uv run python -u run_experiments.py > queue.log 2>&1 &        then: tail -f queue.log
 
-Each run is the training notebook (02_train.ipynb) with the settings below changed. Everything a run makes goes to
+Each run is the training notebook (notebooks/02_train.ipynb) with the settings below changed. Everything a run makes goes to
 experiments/<experiment>/: runs/<name>/ gets log.txt (the training log, with seconds per epoch) and every picture the
 notebook draws, as numbered PNGs; weights/<name>.pt the weights; results/results_<name>.json the scores.
 """
@@ -37,7 +37,7 @@ import subprocess
 import sys
 import time
 
-NOTEBOOK = "02_train.ipynb"
+NOTEBOOK = "notebooks/02_train.ipynb"
 
 # The queue, one list per experiment (= folder under experiments/). Each entry changes some settings of the notebook's
 # first code cell. Order = what runs first; the numbers count across all experiments, for --only.
@@ -396,7 +396,7 @@ TROPICAL_HOLDOUT = {"kumasi", "kano", "chiang_mai", "gulu_rural", "kayes_rural",
 def holdout(weights_list, role="holdout"):
     """The final evaluation, run ONCE at the very end: each model's IoU per class on the 6 holdout sites (never used for
     any decision), the same scoring as validation. Saved into each results file (holdout_miou, holdout_iou) and side
-    by side in experiments/holdout_results.md. role="final" (--tiebreak): the same on the 6 final-model sites, once,
+    by side in experiments/holdout_results.md. role="final" (--tiebreak): the same on the 62 final-model sites, once,
     before the final model trains on them (exp8 rule 4)."""
     import copy
     from lulc import CLASSES, LULCDataset

@@ -1,5 +1,8 @@
 # Prototype demo: notes for the meeting
 
+> Written in October 2026 for the first prototype (the experiment 4 model, 29 training sites). The model, the numbers
+> and the page layout have changed since; the current state is in the [README](../README.md) and the report.
+
 ## What it does
 - **You give it:** a latitude, a longitude and a start month.
 - **It gives back:** 12 monthly land-cover maps of a 10 km × 10 km square around that point, the share of each class per month, and how much each class changed, month to month and from the first to the last month.

@@ -1,17 +1,25 @@
-project_scope.pdf
-.vibe-wise
+# Environment and tools
 .venv/
-data/
-*.zip
-weights/
 __pycache__/
-PROJECT_SUMMARY.md
-upload/
-*_smoke*
-queue.log
-prototype_runs/
-streamlit.log
-coherence_raw/
-coherence.log
-demos.tgz
 .claude
+.vibe-wise
+
+# Data, model weights and run outputs: too large for git, they live on the server
+data/
+weights/
+prototype_runs/
+coherence_raw/
+upload/
+*.zip
+demos.tgz
+*_smoke*
+
+# Logs
+queue.log
+streamlit.log
+coherence.log
+
+# Local only
+project_scope.pdf
+PROJECT_SUMMARY.md
+*.mp4

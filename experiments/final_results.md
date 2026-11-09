@@ -1,4 +1,4 @@
-# Scores on the 6 final sites (scored once)
+# Scores on the 62 final sites (scored once)
 
 | Model | mIoU | water | trees | low vegetation | flooded vegetation | crops | built | bare |
 |---|---|---|---|---|---|---|---|---|

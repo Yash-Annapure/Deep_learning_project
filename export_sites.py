@@ -13,7 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-NOTEBOOK = "01_data_export.ipynb"
+NOTEBOOK = "notebooks/01_data_export.ipynb"
 STEPS = ["## 1.", "## 2.", "## 3.", "## 4.", "## 8.", "## 11.", "## 5.", "### Check the yearly labels"]   # in this order
 
 
