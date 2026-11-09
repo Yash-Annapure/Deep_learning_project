@@ -6,7 +6,7 @@ Give it a point on Earth and a start month. It returns twelve monthly land-cover
 point, the share of each class in every month, and what changed between months. The only input is Sentinel-1 radar,
 which sees through cloud, so rainy seasons and flood months do not leave gaps the way optical imagery does.
 
-Course project for **SRH Data Engineering 1** (November 2026): a semantic segmentation model plus a working prototype.
+Course project for **Deep Learning** (November 2026): a semantic segmentation model plus a working prototype.
 
 | | |
 |---|---|
@@ -178,6 +178,3 @@ a container restart.
 
 The full method, results and discussion are in [`docs/report.docx`](docs/report.docx).
 
-## Author
-
-Yash Annapure, SRH Data Engineering 1, 2026. No licence is granted yet: all rights reserved.

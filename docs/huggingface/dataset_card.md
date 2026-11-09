@@ -17,7 +17,7 @@ size_categories:
 
 Monthly Sentinel-1 radar composites paired with monthly land-cover labels, for 10 km × 10 km squares at 120 sites
 worldwide. Made for the project [Monthly Land Cover from Sentinel-1 Radar](https://github.com/Yash-Annapure/Deep_learning_project)
-(SRH Data Engineering 1, November 2026). All data was exported from Google Earth Engine on a 10 m grid
+(SRH Deep Learning, November 2026). All data was exported from Google Earth Engine on a 10 m grid
 (1000 × 1000 pixels per site).
 
 ## Sites

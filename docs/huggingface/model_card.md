@@ -16,7 +16,7 @@ tags:
 # Sentinel-1 monthly land cover: U-Net (ResNet-50)
 
 The final model of the project [Monthly Land Cover from Sentinel-1 Radar](https://github.com/Yash-Annapure/Deep_learning_project)
-(SRH Data Engineering 1, November 2026). It labels every 10 m pixel of a Sentinel-1 radar image with one of seven
+(SRH Deep Learning, November 2026). It labels every 10 m pixel of a Sentinel-1 radar image with one of seven
 land-cover classes, from radar alone.
 
 ## Files
