@@ -145,10 +145,13 @@ def overlay_map(res, k, show_change, opacity):
 def month_viewer(res):
     """The 12 maps behind a slider, as a picture or over the satellite photo. Only this part of the page reruns when
     its controls move, so scrubbing stays quick."""
-    first = next(i for i, mp in enumerate(res["maps"]) if mp is not None)
+    changed = [P.changed_share(res, k) for k in range(12)]       # NaN for the first month with radar and months without
+    busiest = max((k for k in range(12) if changed[k] == changed[k]), key=lambda k: changed[k],
+                  default=next(i for i, mp in enumerate(res["maps"]) if mp is not None))   # opens on the month that changed most
     left, right = st.columns([1, 1])
     with right:
-        month = st.select_slider("Month", res["months"], value=res["months"][first])
+        month = st.select_slider("Month", res["months"], value=res["months"][busiest],
+                                 help="Opens on the month whose map changed most since the month before.")
         show_change = st.toggle("Highlight pixels that changed since the previous month (magenta)")
         on_sat = st.toggle("Lay the map over the satellite photo",
                            help="Check *what is where*: villages, water, fields, forest. The photo is from another date, "
@@ -162,6 +165,9 @@ def month_viewer(res):
         share = P.changed_share(res, i)
         st.metric("Pixels that changed class since the previous month", "–" if share != share else f"{share:.1f}%",
                   help=CHANGED_HELP)
+        if share != share and res["maps"][i] is not None:
+            st.caption("The first month with radar: there is no earlier month to compare with, so no changes yet. "
+                       "Move the slider to a later month.")
         table(pd.DataFrame({"share (%)": res["shares"][i], "change (points)": res["change"][i]}, index=NAMES))
         st.caption("**share**: % of the square in each class this month; the column adds up to 100, and 1% = 1 km². "
                    "**change**: points gained (+) or lost (−) since the previous month with radar; the column adds up to "
